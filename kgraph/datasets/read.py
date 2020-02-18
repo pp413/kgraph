@@ -8,6 +8,7 @@ import zipfile
 
 import numpy as np
 import pandas as pd
+import prettytable as pt
 
 from collections import Counter
 
@@ -125,6 +126,7 @@ def download(url, path=None, overwrite=False, retries=5, verify_ssl=True, log=Tr
                     for chunk in r.iter_content(chunk_size=1024):
                         if chunk:  # filter out keep-alive new chunks
                             f.write(chunk)
+                break
             except Exception as e:
                 retries -= 1
                 if retries <= 0:
@@ -246,6 +248,21 @@ def _str_to_idx(data):
 def low_name(data_name_str):
     return data_name_str.lower()
 
+def _pprint(data, dataName=''):
+    
+    train_len = len(data['train'])
+    valid_len = len(data['valid'])
+    test_len = len(data['test'])
+    
+    total_relations = data['train'][:, 1].max()+1
+    total_entities = data['train'][:, 0].max()+1
+    
+    tb = pt.PrettyTable()
+    tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']
+    tb.add_row([dataName, train_len, valid_len, test_len, total_entities, total_relations])
+    print(tb)
+    print()
+    return data, total_entities, total_relations
 
 def load_fb15k(clean_unseen=True):
     """Load the FB15k dataset
@@ -298,9 +315,7 @@ def load_fb15k(clean_unseen=True):
     data = _clean_data(data) if clean_unseen else data
     data = _str_to_idx(data)
 
-    return (data,
-            data['train'][:, 0].max()+1,
-            data['train'][:, 1].max()+1)
+    return _pprint(data, 'FB15k')
 
 
 def load_fb15k237(clean_unseen=True):
@@ -355,9 +370,7 @@ def load_fb15k237(clean_unseen=True):
     data = _clean_data(data) if clean_unseen else data
     data = _str_to_idx(data)
 
-    return (data,
-            data['train'][:, 0].max()+1,
-            data['train'][:, 1].max()+1)
+    return _pprint(data, 'FB15k-237')
 
 
 def load_wn18(clean_unseen=True):
@@ -412,9 +425,7 @@ def load_wn18(clean_unseen=True):
     data = _clean_data(data) if clean_unseen else data
     data = _str_to_idx(data)
 
-    return (data,
-            data['train'][:, 0].max()+1,
-            data['train'][:, 1].max()+1)
+    return _pprint(data, 'WN18')
 
 
 def load_wn18rr(clean_unseen=True):
@@ -470,9 +481,7 @@ def load_wn18rr(clean_unseen=True):
     data = _clean_data(data) if clean_unseen else data
     data = _str_to_idx(data)
 
-    return (data,
-            data['train'][:, 0].max()+1,
-            data['train'][:, 1].max()+1)
+    return _pprint(data, 'WN18RR')
 
 
 def load_yago3_10(clean_unseen=True):
@@ -525,9 +534,7 @@ def load_yago3_10(clean_unseen=True):
     data = _clean_data(data) if clean_unseen else data
     data = _str_to_idx(data)
 
-    return (data,
-            data['train'][:, 0].max()+1,
-            data['train'][:, 1].max()+1)
+    return _pprint(data, 'YAGO3-10')
 
 
 def load_wn11(clean_unseen=True):

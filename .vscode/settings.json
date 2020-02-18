@@ -1,0 +1,9 @@
+{
+    "editor.fontFamily": "'Fira code', Fira code",
+    "workbench.panel.defaultLocation": "right",
+    "workbench.colorTheme": "GitHub Plus",
+    "workbench.preferredHighContrastColorTheme": "Github",
+    "workbench.preferredLightColorTheme": "GitHub Plus",
+    "workbench.iconTheme": "material-icon-theme",
+    "workbench.preferredDarkColorTheme": "GitHub Plus"
+}
