@@ -1,11 +1,11 @@
 from setuptools import setup, find_packages
 
-setup_params = dict(name='graphai',
-                    version='0.0.0',
+setup_params = dict(name='kgraph',
+                    version='0.0.1',
                     description='A Python library for relational learning on knowledge graphs.',
-                    # url='https://github.com/Accenture/AmpliGraph/',
-                    # author='Accenture Dublin Labs',
-                    # author_email='about@ampligraph.org',
+                    url='https://github.com/YaoShuang-long/kgraph',
+                    author='Yao Shuang-long',
+                    author_email='shuanglongyao@gmail.com',
                     license='Apache 2.0',
                     packages=find_packages(),
                     include_package_data=True,

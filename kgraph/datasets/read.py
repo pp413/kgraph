@@ -402,9 +402,9 @@ def load_wn18(clean_unseen=True):
     extract_archive(tgz_path, fdir)
 
     data_sha1 = {
-        'train': '1448a31a528da315217960edeca97f68209f8254',
-        'test': '263a7bd582cf1d27961fc4143ca2bee474bf03fc',
-        'valid': '732eb032787161e61b7bcc7ab3965b7569b405ce'
+        'train': 'b78e956440e0b7631517aa1b230818f581281e6d',
+        'test': 'e5308598809646ad01da6b4d9cede189f918aa31',
+        'valid': '2433f787c8dcf3ac376d70ebd358ef3998313ea3'
     }
 
     data = _load_data(fdir, data_name, data_sha1)
@@ -460,9 +460,9 @@ def load_wn18rr(clean_unseen=True):
     extract_archive(tgz_path, fdir)
 
     data_sha1 = {
-        'train': '1448a31a528da315217960edeca97f68209f8254',
-        'test': '263a7bd582cf1d27961fc4143ca2bee474bf03fc',
-        'valid': '732eb032787161e61b7bcc7ab3965b7569b405ce'
+        'train': '078fd2890583f99d75342d0eeea6d0c4e6167c76',
+        'test': 'da28a9c1759d66f87873d8e1ecc4884501211f83',
+        'valid': '38bbe458b5f8e36310456cac5e0119f05d39cef5'
     }
 
     data = _load_data(fdir, data_name, data_sha1)
@@ -515,9 +515,9 @@ def load_yago3_10(clean_unseen=True):
     extract_archive(tgz_path, fdir)
 
     data_sha1 = {
-        'train': '1448a31a528da315217960edeca97f68209f8254',
-        'test': '263a7bd582cf1d27961fc4143ca2bee474bf03fc',
-        'valid': '732eb032787161e61b7bcc7ab3965b7569b405ce'
+        'train': 'a27945951c79609313e4218b83b158b4660cc214',
+        'test': 'b7d88415a9bdb54ef8fed5098c85f3e80bc05ae5',
+        'valid': 'e56d645455d9b9751f1e38724d224be430f696b3'
     }
 
     data = _load_data(fdir, data_name, data_sha1)
@@ -575,8 +575,8 @@ def load_wn11(clean_unseen=True):
     extract_archive(tgz_path, fdir)
 
     data_sha1 = {
-        'train': '1448a31a528da315217960edeca97f68209f8254',
-        'test': '263a7bd582cf1d27961fc4143ca2bee474bf03fc',
+        'train': 'dd2a8f65b75b0d96a9313498967a72f4f6c19c75',
+        'test': 'f927599f38323450de3739d98cd0b2fced6cd3d4',
         'valid': '732eb032787161e61b7bcc7ab3965b7569b405ce'
     }
 
@@ -630,15 +630,15 @@ def load_fb13(clean_unseen=True):
     """
 
     root = set_root_dir()
-    data_name = 'wordnet11'
+    data_name = 'freebase13'
     url = down_url(data_name)
     tgz_path = download(url, root)
     fdir = os.path.join(root, data_name)
     extract_archive(tgz_path, fdir)
 
     data_sha1 = {
-        'train': '1448a31a528da315217960edeca97f68209f8254',
-        'test': '263a7bd582cf1d27961fc4143ca2bee474bf03fc',
+        'train': '2db7c911c7f2e12896e30fa04e0ad699194f9d9d',
+        'test': 'b10401858e49c1a67e1b8b607653faa9acd50672',
         'valid': '732eb032787161e61b7bcc7ab3965b7569b405ce'
     }
 
