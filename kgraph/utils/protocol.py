@@ -160,6 +160,37 @@ def double_data_cal(function, data, num_ent=0, num_rel=0, batch_size=512,
     
     return (tranks, tfranks), (hranks, hfranks)
 
+def select_head(data):
+    left_entity = {}
+    right_entity = {}
+    rel = {}
+    
+    for fp in ['train', 'valid', 'test']:
+        for triplet in data[fp]:
+            rel.add(triplet[1])
+            if triplet[1] not in left_entity:
+                left_entity[triplet[1]] = {}
+            if triplet[0] not in left_entity[triplet[1]]:
+                left_entity[triplet[1]][triplet[0]] = 0
+            left_entity[triplet[1]][triplet[0]] += 1
+            
+            if triplet[1] not in right_entity:
+                right_entity[triplet[1]] = {}
+            if triplet[0] not in right_entity[triplet[1]]:
+                right_entity[triplet[1]][triplet[2]] = 0
+            right_entity[triplet[1]][triplet[2]] += 1
+    
+    left_avg = {}
+    for i in range(len(rel)):
+        left_avg[i] = sum(left_entity[i].values()) * 1.0 / len(left_entity[i])
+    right_avg = {}
+    for i in range(len(rel)):
+        right_avg[i] = sum(right_entity[i].values()) * 1.0 / len(right_entity[i])
+    headSelector = {}
+    for i in range(len(rel)):
+        headSelector[i] = 1000 * right_avg[i] / (left_avg[i] + right_avg[i])
+    return headSelector
+
 
 class Base():
     def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001,
@@ -167,6 +198,7 @@ class Base():
         self.num_ent = num_ent
         self.num_rel = num_rel
         self.data = data
+        self.head_selector = select_head(data)
         
         self.loss = loss
         self.device = device
@@ -315,8 +347,10 @@ class TrainEval_By_Triplet(Base):
         
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
-        subj = choices > 0.5
-        obj = choices <= 0.5
+        p = np.array([self.head_selector[i[1]] for i in neg_samples])
+        
+        subj = choices <= p
+        obj = choices > p
         neg_samples[subj, 0] = values[subj]
         neg_samples[obj, 2] = values[obj]
         
@@ -395,8 +429,10 @@ class TrainEval_For_Trans(Base):
         num_to_generate = self.size['train']
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
-        subj = choices > 0.5
-        obj = choices <= 0.5
+        p = np.array([self.head_selector[i[1]] for i in train_data])
+        
+        subj = choices <= p
+        obj = choices > p
         
         pos_head_samples = train_data[subj, :]
         neg_head_samples = pos_head_samples.copy()

@@ -1,7 +1,7 @@
 from setuptools import setup, find_packages
 
 setup_params = dict(name='kgraph',
-                    version='0.0.9',
+                    version='0.1.0',
                     description='A Python library for relational learning on knowledge graphs.',
                     url='https://github.com/YaoShuang-long/kgraph',
                     author='Yao Shuang-long',
