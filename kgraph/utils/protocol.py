@@ -31,22 +31,31 @@ def calculate_rank(test_labels, pred_socres, filter_labels, num_ent=0):
     labels_ord = all_labels_ternary[idx]
     return where(labels_ord, break_num=for_break)
 
-def add_reverse(data, num_relations, concate=True):
+def add_reverse(data, num_relations=None, concate=True):
+    old_data = data.copy()
+    if num_relations is None:
+        num_relations = np.max(old_data[:, 1])
     if concate:
-        src_, rel, dst_ = data.transpose(1, 0)
+        src_, rel, dst_ = old_data.transpose(1, 0)
         src = np.concatenate((src_, dst_), 0)
         rel = np.concatenate((rel, rel + num_relations), 0)
         dst = np.concatenate((dst_, src_), 0)
         
-        data = np.stack((src, rel, dst)).transpose(1, 0)
+        new_data = np.stack((src, rel, dst)).transpose(1, 0)
     else:
-        src_, rel, dst_ = data.transpose(1, 0)
+        src_, rel, dst_ = old_data.transpose(1, 0)
         rel += num_relations
-        data = np.stack((dst_, rel, src_)).transpose(1, 0)
-    return data
+        new_data = np.stack((dst_, rel, src_)).transpose(1, 0)
+    return new_data
 
 def get_triplets_set(train_data):
     return set([(x[0], x[1], x[2]) for x in train_data])
+
+def get_all_triplets_set(data):
+    train_set = get_triplets_set(data['train'])
+    valid_set = get_triplets_set(data['valid'])
+    test_set = get_triplets_set(data['test'])
+    return train_set | valid_set | test_set
 
 def T(data):
     src, rel, dst = data.transpose(1, 0)
@@ -92,7 +101,7 @@ def __cal(target_function, data, num_ent=0, batch_size=512, pair_filter=None,
     num_batchs = num_ent // batch_size + 1
     ranks, franks = [], []
     
-    tbar = tqdm(data[1])
+    tbar = tqdm(data[1], ncols=100)
     new_ents = np.arange(num_ent).reshape((-1, 1))
     for pair in tbar:
         scores = np.zeros(num_ent)
@@ -152,12 +161,76 @@ def double_data_cal(function, data, num_ent=0, num_rel=0, batch_size=512,
     return (tranks, tfranks), (hranks, hfranks)
 
 
-class BaseEval():
-    
-    def __init__(self, num_ent=0, num_rel=0, data=None, **kwargs):
+class Base():
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001,
+                 loss=None, batch_size=1, device='cpu', **kwargs):
         self.num_ent = num_ent
         self.num_rel = num_rel
         self.data = data
+        
+        self.loss = loss
+        self.device = device
+        for k, v in kwargs.items():
+            self.__dict__[k] = v
+        print('The structure of model:')
+        print(model)
+        print('The model is running on the device of {}'.format(device))
+        print()
+        self.use_torch_loss = True
+        if loss is None:
+            self.loss = model.loss
+            self.use_torch_loss = False
+
+        self.model = model.to(device)
+        self.opt = opt(self.model.parameters(), lr=lr)
+
+        self.size = {k: len(v) for k, v in data.items()}
+        self.num_batch = len(data['train']) // batch_size + 1
+        self.batch_size = batch_size
+    
+    def set_opt(self, opt):
+        self.opt = opt
+    
+    def set_loss(self, loss):
+        self.loss = loss
+    
+    def train_step(self, *data):
+        batch_data = [torch.from_numpy(i).to(self.device) for i in data]
+        
+        if len(batch_data) == 1:
+            batch_label = batch_data[-1][:, 2]
+            batch_data = [batch_data[0], batch_label]
+        return self.loss(*batch_data)
+    
+    def sample_iter(self, **kwargs):
+        pass
+    
+    def train_iter(self, **kwargs):
+        return self.sample_iter(**kwargs)
+    
+    def fit(self, num_epoch=1, batch_size=None, step=50, gamma=0.99, **kwargs):
+        if 'num_epoch' in self.__dict__.keys():
+            num_epoch = self.num_epoch
+        if batch_size is None:
+            if 'batch_size' not in self.__dict__.keys():
+                return
+            else:
+                batch_size = self.batch_size
+        scheduler = torch.optim.lr_scheduler.StepLR(
+            self.opt, step_size=step, gamma=gamma
+        )
+        
+        for i in range(num_epoch):
+            avg_loss = []
+            for data in self.train_iter(**kwargs):
+                loss = self.train_step(*data)
+                self.opt.zero_grad()
+                loss.backward()
+                self.opt.step()
+                avg_loss.append(loss.item())
+
+            print(f'Epoch: {i+1}, Avg Loss: {np.mean(avg_loss):.5f}')
+            print()
     
     def cal_rank(self, flags):
         if flags == 'original':
@@ -165,8 +238,8 @@ class BaseEval():
         else:
             return double_data_cal
     
-    def eval(self, function, test_data, batch_size=512, flags='original',
-             filename='conf.txt', device='cpu'):
+    def eval(self, function, test_data='test', batch_size=1024, flags='original',
+             filename='conf.txt'):
         """
         
         paramaters:
@@ -178,11 +251,23 @@ class BaseEval():
         device: 'cpu' or 'gpu'.
         
         """
+        if isinstance(test_data, str):
+            if test_data == 'test':
+                test_data = self.data['test']
+                print('Evaluating on the test dataset')
+            else:
+                test_data = self.data['valid']
+                print('Evaluating on the test dataset')
+        else:
+            print('Waiting For the evaluation...')
+        data_name = self.data['name']
+        fs = filename.split('.')[0]
+        filename = f'{fs} {chr(960)} {data_name}.txt'
         (tranks, tfranks), (hranks, hfranks) = self.cal_rank(flags)(
-            function, test_data, self.num_ent, self.num_rel, batch_size, self.data, device
+            function, test_data, self.num_ent, self.num_rel, batch_size, self.data, self.device
         )
-        now = arrow.now().format('\t YYYY-MM-DD HH:mm:ss')
-        pprint('\t\t The results of calulating the ranks ' + now, filename)
+        now = arrow.now().format(' YYYY-MM-DD HH:mm:ss')
+        pprint('\t The results of calulating the ranks on ' + data_name + now, filename)
         tb = pt.PrettyTable()
         tb.float_format = "2.3"
         tb.field_names = [' Evaluation ', 'MR', 'MRR (%)', 'Hits@1 (%)', 'Hits@3 (%)', 'Hits@10 (%)']
@@ -201,21 +286,24 @@ class BaseEval():
         print(tb)
         
         tb = tb.get_string()
+        
         with open(filename, 'a') as f:
             f.write(tb)
         pprint('\n', filename)
 
 
-class TrainEval_By_Triplet(BaseEval):
+class TrainEval_By_Triplet(Base):
     
-    def __init__(self, num_ent=0, num_rel=0, data=None, negative_rate=1, batch_size=0):
-        self.num_rel = int(num_rel)
-        self.num_ent = int(num_ent)
-        self.batch_size = batch_size
-        self.negative_rate = negative_rate
-        self.data = data
-
-        self.global_triplets = None
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001, loss=None,
+                 negative_rate=1, batch_size=0, device='cpu', reverse=False):
+        super(TrainEval_By_Triplet, self).__init__(data=data, num_ent=num_ent, lr=lr,
+                                    num_rel=num_rel, model=model, opt=opt, loss=loss,
+                                    device=device, negative_rate=negative_rate,
+                                    global_triplets=get_all_triplets_set(data),
+                                    batch_size=batch_size, reverse=reverse)
+        if reverse:
+            len_data = len(data['train']) * 2
+            self.num_batch = len_data // batch_size + 1
     
     def negative_sample(self, pos_samples):
         size = len(pos_samples)
@@ -241,41 +329,54 @@ class TrainEval_By_Triplet(BaseEval):
                     neg_samples[i, 0] = np.random.choice(self.num_ent)
                 else:
                     neg_samples[i, 2] = np.random.choice(self.num_ent)
-        return np.concatenate((pos_samples, neg_samples)), labels
+        return [np.concatenate((pos_samples, neg_samples)), labels]
 
-    def sample_iter(self, batch_size=0, negative_rate=1):
-        if batch_size == 0:
-            batch_size = self.batch_size
-        if negative_rate != 1:
-            self.negative_rate = negative_rate
+    def sample_iter(self):
+        if self.reverse:
+            train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
+        else:
+            train_data = np.random.permutation(self.data['train'])
+        batch_size = self.batch_size
         
         if self.global_triplets is None:
-            self.global_triplets = get_triplets_set(self.data['train'])
+            self.global_triplets = get_triplets_set(train_data)
         
-        size = len(self.data['train'])
-        num_batch = size // batch_size
-        train_data = np.random.permutation(self.data['train'])
-        
-        for i in trange(num_batch):
+        for i in trange(self.num_batch, ncols=100):
             yield self.negative_sample(train_data[i * batch_size: (i + 1) * batch_size, :])
      
 
-class TrainEval_By_Pair(BaseEval):
-    pass
-
-
-class TrainEval_For_Trans(BaseEval):
+class TrainEval_By_Pair(Base):
     
-    def __init__(self, num_ent=0, num_rel=0, data=None, negative_rate=1, batch_size=0):
-        self.num_rel = int(num_rel)
-        self.num_ent = int(num_ent)
-        self.batch_size = batch_size
-        self.negative_rate = negative_rate
-        self.data = data
-
-        self.global_triplets = get_triplets_set(self.data['train'])
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss=None,
+                 batch_size=0, lr=0.001, device='cpu', reverse=False):
+        super(TrainEval_By_Pair, self).__init__(
+            data=data, num_ent=num_ent, num_rel=num_rel, model=model, opt=opt, loss=loss,
+            batch_size=batch_size, device=device, reverse=reverse, lr=lr
+        )
+        if reverse:
+            len_data = len(data['train']) * 2
+            self.num_batch = len_data // batch_size + 1
     
-    def sample(self, mix=True):  
+    def sample_iter(self):
+        if self.reverse:
+            train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
+        else:
+            train_data = np.random.permutation(self.data['train'])
+        batch_size = self.batch_size
+        for i in trange(self.num_batch, ncols=100):
+            yield [train_data[i * batch_size: (i + 1) * batch_size, :]]
+
+
+class TrainEval_For_Trans(Base):
+    
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss=None,
+                 batch_size=0, device='cpu', lr=0.001):
+        super(TrainEval_For_Trans, self).__init__(data=data, num_ent=num_ent,
+                                    num_rel=num_rel, model=model, opt=opt, loss=loss,
+                                    device=device, batch_size=batch_size, lr=lr,
+                                    global_triplets=get_all_triplets_set(data))
+    
+    def sample(self):  
         def filt(samples, all_train_triplet, for_neg_head=True):
             for i, s in enumerate(samples):
                 triplet = (s[0], s[1], s[2])
@@ -291,7 +392,7 @@ class TrainEval_For_Trans(BaseEval):
         global_triplets = self.global_triplets
         train_data = self.data['train']
         
-        num_to_generate =len(train_data)
+        num_to_generate = self.size['train']
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
         subj = choices > 0.5
@@ -307,12 +408,16 @@ class TrainEval_For_Trans(BaseEval):
         neg_tail_samples[:, 2] = values[obj]
         filt(neg_tail_samples, global_triplets, for_neg_head=False)
         
-        if mix:
-            pos_samples = np.concatenate((pos_head_samples, pos_tail_samples))
-            neg_samples = np.concatenate((neg_head_samples, neg_tail_samples))
-            ret_index = np.random.permutation(np.arange(num_to_generate))
+        pos_samples = np.concatenate((pos_head_samples, pos_tail_samples))
+        neg_samples = np.concatenate((neg_head_samples, neg_tail_samples))
+        ret_index = np.random.permutation(np.arange(num_to_generate))
             
-            return pos_samples[ret_index], neg_samples[ret_index]
-        else:
-            return (pos_head_samples, neg_head_samples), (pos_tail_samples, neg_tail_samples)
+        return pos_samples[ret_index], neg_samples[ret_index]
+    
+    def sample_iter(self):
+        pos, neg = self.sample()
+        bs = self.batch_size
+        for i in trange(self.num_batch, ncols=100):
+            i = i * bs
+            yield [pos[i: i+bs, :], neg[i: i+bs, :]]
 

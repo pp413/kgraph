@@ -197,10 +197,10 @@ def _load_data(fdir, data_name, data_sha1):
         valid = load_from_csv(check_valid)
         test = load_from_csv(check_test)
 
-        return {'train': train, 'valid': valid, 'test': test}
+        return {'train': train, 'valid': valid, 'test': test, 'name': data_name}
 
 
-def _clean_data(X, return_idx=False):
+def _clean_data(X):
 
     train = pd.DataFrame(X['train'], columns=['s', 'p', 'o'])
     valid = pd.DataFrame(X['valid'], columns=['s', 'p', 'o'])
@@ -215,12 +215,10 @@ def _clean_data(X, return_idx=False):
     filtered_valid = valid[valid_idx].values
     filtered_test = test[test_idx].values
 
-    filtered_X = {'train': train.values, 'valid': filtered_valid, 'test': filtered_test}
+    filtered_X = {'train': train.values, 'valid': filtered_valid, 'test': filtered_test,
+                  'name': X['name']}
 
-    if return_idx:
-        return filtered_X, valid_idx, test_idx
-    else:
-        return filtered_X
+    return filtered_X
 
 
 def _str_to_idx(data):
@@ -241,21 +239,19 @@ def _str_to_idx(data):
     return {
         'train': np.asarray(_triplets_as_list(data['train'], entities_idx_dict, relations_idx_dict)),
         'valid': np.asarray(_triplets_as_list(data['valid'], entities_idx_dict, relations_idx_dict)),
-        'test': np.asarray(_triplets_as_list(data['test'], entities_idx_dict, relations_idx_dict))
-    }
+        'test': np.asarray(_triplets_as_list(data['test'], entities_idx_dict, relations_idx_dict)),
+        'name': data['name']
+    }, len(entities), len(relations)
 
 
 def low_name(data_name_str):
     return data_name_str.lower()
 
-def _pprint(data, dataName=''):
+def _pprint(data, total_entities, total_relations, dataName=''):
     
     train_len = len(data['train'])
     valid_len = len(data['valid'])
     test_len = len(data['test'])
-    
-    total_relations = data['train'][:, 1].max()+1
-    total_entities = data['train'][:, 0].max()+1
     
     tb = pt.PrettyTable()
     tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']
@@ -264,7 +260,7 @@ def _pprint(data, dataName=''):
     print()
     return data, total_entities, total_relations
 
-def load_fb15k(clean_unseen=True):
+def load_fb15k(original=False, clean_unseen=True):
     """Load the FB15k dataset
 
     .. warning::
@@ -290,6 +286,8 @@ def load_fb15k(clean_unseen=True):
     ========= ========= ======= ======= ============ ===========
     FB15K     483,142   50,000  59,071  14,951        1,345
     ========= ========= ======= ======= ============ ===========
+    Cleaned   483,142   50,000  59,071  14,951        1,345
+    ========= ========= ======= ======= ============ ===========
 
     Parameters
     ----------
@@ -313,12 +311,14 @@ def load_fb15k(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
-    data = _str_to_idx(data)
+    if original:
+        return data
+    data, total_entities, total_relations = _str_to_idx(data)
 
-    return _pprint(data, 'FB15k')
+    return _pprint(data, total_entities, total_relations, 'FB15k')
 
 
-def load_fb15k237(clean_unseen=True):
+def load_fb15k237(original=False, clean_unseen=True):
     """Load the FB15k-237 dataset
 
     FB15k-237 is a reduced version of FB15K. It was first proposed by :cite:`toutanova2015representing`.
@@ -368,12 +368,14 @@ def load_fb15k237(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
-    data = _str_to_idx(data)
+    if original:
+        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
+    data, total_entities, total_relations = _str_to_idx(data)
 
-    return _pprint(data, 'FB15k-237')
+    return _pprint(data, total_entities, total_relations, 'FB15k-237')
 
 
-def load_wn18(clean_unseen=True):
+def load_wn18(original=False, clean_unseen=True):
     """Load the WN18 dataset
 
     .. warning::
@@ -399,6 +401,9 @@ def load_wn18(clean_unseen=True):
     ========= ========= ======= ======= ============ ===========
     WN18      141,442   5,000   5,000   40,943        18
     ========= ========= ======= ======= ============ ===========
+    Cleaned   141,442   5,000   5,000   40,943        18 
+    ========= ========= ======= ======= ============ ===========
+    
     Parameters
     ----------
     clean_unseen : bool
@@ -423,12 +428,14 @@ def load_wn18(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
-    data = _str_to_idx(data)
+    if original:
+        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
+    data, total_entities, total_relations = _str_to_idx(data)
 
-    return _pprint(data, 'WN18')
+    return _pprint(data, total_entities, total_relations, 'WN18')
 
 
-def load_wn18rr(clean_unseen=True):
+def load_wn18rr(original=False, clean_unseen=True):
     """Load the WN18RR dataset
 
     The dataset is described in :cite:`DettmersMS018`.
@@ -450,6 +457,8 @@ def load_wn18rr(clean_unseen=True):
      Dataset  Train     Valid   Test    Entities     Relations
     ========= ========= ======= ======= ============ ===========
     WN18RR    86,835    3,034   3,134   40,943        11
+    ========= ========= ======= ======= ============ ===========
+    Cleaned   86,835    3,034   3,134   40,943        11
     ========= ========= ======= ======= ============ ===========
 
     .. warning:: WN18RR's validation set contains 198 unseen entities over 210 triples.
@@ -479,12 +488,14 @@ def load_wn18rr(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
-    data = _str_to_idx(data)
+    if original:
+        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
+    data, total_entities, total_relations = _str_to_idx(data)
 
-    return _pprint(data, 'WN18RR')
+    return _pprint(data, total_entities, total_relations, 'WN18RR')
 
 
-def load_yago3_10(clean_unseen=True):
+def load_yago3_10(original=False, clean_unseen=True):
     """Load the YAGO3-10 dataset
    
     The dataset is a split of YAGO3 :cite:`mahdisoltani2013yago3`,
@@ -506,6 +517,8 @@ def load_yago3_10(clean_unseen=True):
      Dataset  Train     Valid   Test    Entities     Relations
     ========= ========= ======= ======= ============ ===========
     YAGO3-10  1,079,040 5,000   5,000   123,182       37
+    ========= ========= ======= ======= ============ ===========
+    Cleaned   1,079,040 4,978   4,982   123,142       37
     ========= ========= ======= ======= ============ ===========
 
     Parameters
@@ -532,12 +545,14 @@ def load_yago3_10(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
-    data = _str_to_idx(data)
+    if original:
+        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
+    data, total_entities, total_relations = _str_to_idx(data)
 
-    return _pprint(data, 'YAGO3-10')
+    return _pprint(data, total_entities, total_relations, 'YAGO3-10')
 
 
-def load_wn11(clean_unseen=True):
+def load_wn11(original=False, clean_unseen=True):
     """Load the WordNet11 (WN11) dataset
 
     WordNet was originally proposed in `WordNet: a lexical database for English` :cite:`miller1995wordnet`.
@@ -590,6 +605,8 @@ def load_wn11(clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    if original:
+        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
     data = _str_to_idx(data)
 
     return (data,
@@ -665,5 +682,9 @@ def load_all_datasets(clean_unseen=True):
     load_fb15k(clean_unseen)
     load_fb15k237(clean_unseen)
     load_yago3_10(clean_unseen)
-    load_wn11(clean_unseen)
-    load_fb13(clean_unseen)
+    # load_wn11(clean_unseen)
+    # load_fb13(clean_unseen)
+
+
+if __name__ == "__main__":
+    load_all_datasets(False)

@@ -133,112 +133,112 @@ def mrr_score(ranks):
     return np.sum(1 / ranks) / len(ranks) * 100
 
 
-def rank_score(y_true, y_pred, num_entities=None, pos_lab=1):
-    """Rank of a triple
+# def rank_score(y_true, y_pred, num_entities=None, pos_lab=1):
+#     """Rank of a triple
 
-        The rank of a positive element against a list of negatives.
-
-    .. math::
-
-        rank_{(s, p, o)_i}
-
-    Parameters
-    ----------
-    y_true : ndarray, shape [n]
-        An array of binary labels. The array only contains one positive.
-    y_pred : ndarray, shape [n]
-        An array of scores, for the positive element and the n-1 negatives.
-    pos_lab : int
-        The value of the positive label (default = 1).
-
-    Returns
-    -------
-    rank : int
-        The rank of the positive element against the negatives.
-
-    Examples
-    --------
-    >>> import numpy as np
-    >>> from metrics import rank_score
-    >>> y_pred = np.array([.434, .65, .21, .84])
-    >>> y_true = np.array([0, 0, 1, 0])
-    >>> rank_score(y_true, y_pred)
-    np.array([4])
-    """
-    def _rank(x, y):
-        return x - y
-    
-    if num_entities is not None:
-        y_true_bin = np.zeros(num_entities)
-        y_true_bin[y_true] = 1
-    else:
-        y_true_bin = y_true
-    idx = np.argsort(y_pred)[::-1]
-    y_ord = y_true_bin[idx]
-    rank = np.where(y_ord == pos_lab)[0] + 1
-    rank = np.sort(rank)
-    rank_idx = np.arange(rank.shape[0])
-    return rank - rank_idx
-
-
-# def mr_score(ranks):
-#     r"""Mean Rank (MR)
-
-#     The function computes the mean of of a vector of rankings ``ranks``.
-
-#     It can be used in conjunction with the learning to rank evaluation protocol of
-#     :meth:`ampligraph.evaluation.evaluate_performance`.
-
-#     It is formally defined as follows:
+#         The rank of a positive element against a list of negatives.
 
 #     .. math::
-#         MR = \frac{1}{|Q|}\sum_{i = 1}^{|Q|}rank_{(s, p, o)_i}
 
-#     where :math:`Q` is a set of triples and :math:`(s, p, o)` is a triple :math:`\in Q`.
-
-#     .. note::
-#         This metric is not robust to outliers.
-#         It is usually presented along the more reliable MRR :meth:`ampligraph.evaluation.mrr_score`.
-
-#     Consider the following example. Each of the two positive triples identified by ``*`` are ranked
-#     against four corruptions each. When scored by an embedding model, the first triple ranks 2nd, and the other triple
-#     ranks first. The resulting MR is: ::
-
-#         s	 p	   o		score	rank
-#         Jack   born_in   Ireland	0.789	   1
-#         Jack   born_in   Italy		0.753	   2  *
-#         Jack   born_in   Germany	0.695	   3
-#         Jack   born_in   China		0.456	   4
-#         Jack   born_in   Thomas		0.234	   5
-
-#         s	 p	   o		score	rank
-#         Jack   friend_with   Thomas	0.901	   1  *
-#         Jack   friend_with   China      0.345	   2
-#         Jack   friend_with   Italy      0.293	   3
-#         Jack   friend_with   Ireland	0.201	   4
-#         Jack   friend_with   Germany    0.156	   5
-
-#         MR=1.5
+#         rank_{(s, p, o)_i}
 
 #     Parameters
 #     ----------
-#     ranks: ndarray or list, shape [n] or [n,2]
-#         Input ranks of n test statements.
+#     y_true : ndarray, shape [n]
+#         An array of binary labels. The array only contains one positive.
+#     y_pred : ndarray, shape [n]
+#         An array of scores, for the positive element and the n-1 negatives.
+#     pos_lab : int
+#         The value of the positive label (default = 1).
 
 #     Returns
 #     -------
-#     mr_score: float
-#         The MR score
+#     rank : int
+#         The rank of the positive element against the negatives.
 
 #     Examples
 #     --------
-#     >>> from metrics import mr_score
-#     >>> ranks= [5, 3, 4, 10, 1]
-#     >>> mr_score(ranks)
-#     4.6
+#     >>> import numpy as np
+#     >>> from metrics import rank_score
+#     >>> y_pred = np.array([.434, .65, .21, .84])
+#     >>> y_true = np.array([0, 0, 1, 0])
+#     >>> rank_score(y_true, y_pred)
+#     np.array([4])
 #     """
+#     def _rank(x, y):
+#         return x - y
+    
+#     if num_entities is not None:
+#         y_true_bin = np.zeros(num_entities)
+#         y_true_bin[y_true] = 1
+#     else:
+#         y_true_bin = y_true
+#     idx = np.argsort(y_pred)[::-1]
+#     y_ord = y_true_bin[idx]
+#     rank = np.where(y_ord == pos_lab)[0] + 1
+#     rank = np.sort(rank)
+#     rank_idx = np.arange(rank.shape[0])
+#     return rank - rank_idx
 
-#     if isinstance(ranks, list):
-#         ranks = np.asarray(ranks)
-#     ranks = ranks.reshape(-1)
-#     return np.sum(ranks) / len(ranks)
+
+def mr_score(ranks):
+    r"""Mean Rank (MR)
+
+    The function computes the mean of of a vector of rankings ``ranks``.
+
+    It can be used in conjunction with the learning to rank evaluation protocol of
+    :meth:`ampligraph.evaluation.evaluate_performance`.
+
+    It is formally defined as follows:
+
+    .. math::
+        MR = \frac{1}{|Q|}\sum_{i = 1}^{|Q|}rank_{(s, p, o)_i}
+
+    where :math:`Q` is a set of triples and :math:`(s, p, o)` is a triple :math:`\in Q`.
+
+    .. note::
+        This metric is not robust to outliers.
+        It is usually presented along the more reliable MRR :meth:`ampligraph.evaluation.mrr_score`.
+
+    Consider the following example. Each of the two positive triples identified by ``*`` are ranked
+    against four corruptions each. When scored by an embedding model, the first triple ranks 2nd, and the other triple
+    ranks first. The resulting MR is: ::
+
+        s	 p	   o		score	rank
+        Jack   born_in   Ireland	0.789	   1
+        Jack   born_in   Italy		0.753	   2  *
+        Jack   born_in   Germany	0.695	   3
+        Jack   born_in   China		0.456	   4
+        Jack   born_in   Thomas		0.234	   5
+
+        s	 p	   o		score	rank
+        Jack   friend_with   Thomas	0.901	   1  *
+        Jack   friend_with   China      0.345	   2
+        Jack   friend_with   Italy      0.293	   3
+        Jack   friend_with   Ireland	0.201	   4
+        Jack   friend_with   Germany    0.156	   5
+
+        MR=1.5
+
+    Parameters
+    ----------
+    ranks: ndarray or list, shape [n] or [n,2]
+        Input ranks of n test statements.
+
+    Returns
+    -------
+    mr_score: float
+        The MR score
+
+    Examples
+    --------
+    >>> from metrics import mr_score
+    >>> ranks= [5, 3, 4, 10, 1]
+    >>> mr_score(ranks)
+    4.6
+    """
+
+    if isinstance(ranks, list):
+        ranks = np.asarray(ranks)
+    ranks = ranks.reshape(-1)
+    return np.sum(ranks) / len(ranks)
