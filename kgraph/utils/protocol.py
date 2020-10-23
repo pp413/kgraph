@@ -114,7 +114,7 @@ def __cal(target_function, data, num_ent=0, batch_size=512, pair_filter=None,
         for i in range(num_batchs):
             j = i * batch_size
             batch_data = new_triplets[j: j + batch_size, :]
-            batch_data = torch.from_numpy(batch_data).to(device)
+            batch_data = torch.from_numpy(batch_data).long().to(device)
             with torch.no_grad():
                 score = target_function(batch_data).squeeze_()
                 if not isinstance(score, np.ndarray):
@@ -176,7 +176,7 @@ def select_head(data):
             
             if triplet[1] not in right_entity:
                 right_entity[triplet[1]] = {}
-            if triplet[0] not in right_entity[triplet[1]]:
+            if triplet[2] not in right_entity[triplet[1]]:
                 right_entity[triplet[1]][triplet[2]] = 0
             right_entity[triplet[1]][triplet[2]] += 1
     
@@ -339,6 +339,7 @@ class TrainEval_By_Triplet(Base):
     
     def negative_sample(self, pos_samples):
         size = len(pos_samples)
+        self.negative_rate = int(self.negative_rate)
         num_to_generate = size * self.negative_rate
         neg_samples = np.tile(pos_samples, (self.negative_rate, 1))
         labels = np.ones(size * (self.negative_rate + 1),
@@ -363,7 +364,7 @@ class TrainEval_By_Triplet(Base):
                     neg_samples[i, 0] = np.random.choice(self.num_ent)
                 else:
                     neg_samples[i, 2] = np.random.choice(self.num_ent)
-        return [np.concatenate((pos_samples, neg_samples)), labels]
+        return [np.concatenate((pos_samples, neg_samples)).astype('int64'), labels]
 
     def sample_iter(self):
         if self.reverse:
@@ -396,6 +397,7 @@ class TrainEval_By_Pair(Base):
             train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
         else:
             train_data = np.random.permutation(self.data['train'])
+        train_data = train_data.astype('int64')
         batch_size = self.batch_size
         for i in trange(self.num_batch, ncols=100):
             yield [train_data[i * batch_size: (i + 1) * batch_size, :]]
@@ -448,7 +450,7 @@ class TrainEval_For_Trans(Base):
         neg_samples = np.concatenate((neg_head_samples, neg_tail_samples))
         ret_index = np.random.permutation(np.arange(num_to_generate))
             
-        return pos_samples[ret_index], neg_samples[ret_index]
+        return pos_samples[ret_index].astype('int64'), neg_samples[ret_index].astype('int64')
     
     def sample_iter(self):
         pos, neg = self.sample()
