@@ -163,7 +163,7 @@ def double_data_cal(function, data, num_ent=0, num_rel=0, batch_size=512,
 def select_head(data):
     left_entity = {}
     right_entity = {}
-    rel = {}
+    rel = set()
     
     for fp in ['train', 'valid', 'test']:
         for triplet in data[fp]:
