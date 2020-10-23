@@ -348,10 +348,10 @@ class TrainEval_By_Triplet(Base):
         
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
-        p = np.array([self.head_selector[i[1]] for i in neg_samples])
+        prob = np.array([self.head_selector[i[1]] for i in neg_samples])
         
-        subj = choices <= p
-        obj = choices > p
+        subj = choices <= prob
+        obj = choices > prob
         neg_samples[subj, 0] = values[subj]
         neg_samples[obj, 2] = values[obj]
         
@@ -360,7 +360,7 @@ class TrainEval_By_Triplet(Base):
                 triplet = (neg_samples[i, 0], neg_samples[i, 1], neg_samples[i, 2])
                 if triplet not in self.global_triplets:
                     break
-                if p > 0.5:
+                if p <= prob[i]:
                     neg_samples[i, 0] = np.random.choice(self.num_ent)
                 else:
                     neg_samples[i, 2] = np.random.choice(self.num_ent)
