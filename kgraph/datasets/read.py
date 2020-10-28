@@ -19,6 +19,10 @@ except ImportError:
         pass
     requests = requests_failed_to_import
 
+root = os.path.join(os.path.expanduser('~'), '.KnowledgeGraphDataSets')
+os.environ['KG_DIR'] = root
+if not os.path.exists(root):
+    os.makedirs(root)
 
 all_data = {'wn18', 'wn18RR', 'fb15k', 'fb15k-237', 'YAGO3-10', 'wordnet11', 'freebase13'}
 
@@ -28,9 +32,10 @@ def down_url(data_name):
     return url
 
 
-def set_root_dir():
-    root = os.path.join(os.path.expanduser('~'), '.KnowledgeGraphDataSets')
-    dirname = os.environ.get('KG_DIR', root)
+def set_root_dir(path=None):
+    if path is not None:
+        root = os.path.join(path, '.KnowledgeGraphDataSets')
+    dirname = os.environ.get('KG_DIR')
     if not os.path.exists(dirname):
         os.makedirs(dirname)
     return dirname
@@ -221,27 +226,192 @@ def _clean_data(X):
     return filtered_X
 
 
+def write_dataset(data_id, data_name , name='train2id.txt'):
+    f = open(os.path.join(os.environ.get('KG_DIR'), data_name, name), 'w')
+    f.write("%d\n"%(len(data_id)))
+    for tripe in data_id:
+        h, r, t = tripe
+        h, r, t = int(h), int(r), int(t)
+        f.write(f"{h}\t{r}\t{t}\n")
+    f.close()
+
+
+def write_str2id(data_dict, data_name, name='entity2id.txt'):
+    f = open(os.path.join(os.environ.get('KG_DIR'), data_name, name), 'w')
+    f.write("%d\n"%(len(data_dict)))
+    for i in data_dict:
+        f.write("%s\t%d\n"%(i, data_dict[i]))
+    f.close()
+
+
 def _str_to_idx(data):
+    if os.path.exists(os.path.join(os.environ.get('KG_DIR'), data['name'], 'entity2id.txt')):
+        entities_idx_dict = {}
+        relations_idx_dict = {}
+        ent2id = os.path.join(os.environ.get('KG_DIR'), data['name'], 'entity2id.txt')
+        with open(ent2id, 'r') as f:
+            total_entities = (int)(f.readline().strip())
+            for i in range(total_entities):
+                line = f.readline()
+                entity, ent_id = line.strip().split('\t')
+                ent_id = int(ent_id)
+                entities_idx_dict[entity] = ent_id
+        rel2id = os.path.join(os.environ.get('KG_DIR'), data['name'], 'relation2id.txt')
+        with open(rel2id, 'r') as f:
+            total_relations = (int)(f.readline().strip())
+            for i in range(total_relations):
+                line = f.readline()
+                relation, rel_id = line.strip().split('\t')
+                rel_id = int(rel_id)
+                relations_idx_dict[relation] = rel_id
+    else:
+        all_data = np.concatenate((data['train'], data['valid'], data['test']), 0)
 
-    all_data = np.concatenate((data['train'], data['valid'], data['test']), 0)
+        entities = Counter(np.concatenate((all_data[:, 0], all_data[:, 2]), 0)).most_common()
+        relations = Counter(all_data[:, 1]).most_common()
+        total_entities = len(entities)
+        total_relations = len(relations)
+        
+        entities_idx_dict = {ent[0]: value for value, ent in enumerate(sorted(
+            entities, key=lambda x: x[1]
+        ))}
 
-    entities = Counter(np.concatenate((all_data[:, 0], all_data[:, 2]), 0)).most_common()
-    relations = Counter(all_data[:, 1]).most_common()
+        relations_idx_dict = {rel[0]: value for value, rel in enumerate(sorted(
+            relations, key=lambda x: x[1]
+        ))}
+    
+    train2id = np.asarray(_triplets_as_list(data['train'], entities_idx_dict, relations_idx_dict))
+    valid2id = np.asarray(_triplets_as_list(data['valid'], entities_idx_dict, relations_idx_dict))
+    test2id = np.asarray(_triplets_as_list(data['test'], entities_idx_dict, relations_idx_dict))
 
-    entities_idx_dict = {ent[0]: value for value, ent in enumerate(sorted(
-        entities, key=lambda x: x[1]
-    ))}
+    if not os.path.exists(os.path.join(os.environ.get('KG_DIR'), data['name'], 'constrain.txt')):
+        write_dataset(train2id, data['name'], name='train2id.txt')
+        write_dataset(valid2id, data['name'], name='valid2id.txt')
+        write_dataset(test2id, data['name'], name='test2id.txt')
+        write_str2id(entities_idx_dict, data['name'], name='entity2id.txt')
+        write_str2id(relations_idx_dict, data['name'], name='relation2id.txt')
+        
+        lef = {}    # (h, r) --> t
+        rig = {}    # (r, t) --> h
+        rellef = {}     # r --> the in degree of relation r in the graph
+        relrig = {}     # r --> the in degree of relation r in the graph
+        
+        all_data = np.concatenate((train2id, valid2id, test2id), axis=0)
+        for triplet in all_data:
+            h, r, t = triplet
+            if not (h, r) in lef:
+                lef[(h, r)] = []
+            if not (r, t) in rig:
+                rig[(r, t)] = []
+            lef[(h, r)] += [t]
+            rig[(r, t)] += [h]
+            if not r in rellef:
+                rellef[r] = {}
+            if not r in relrig:
+                relrig[r] = {}
+            rellef[r][h] = 1
+            relrig[r][t] = 1
+        
+        f = open(os.path.join(os.environ.get('KG_DIR'), data['name'], 'constrain.txt'), 'w')
+        f.write("%d\n"%(len(rellef)))
+        for i in rellef:
+            f.write("%d\t%d"%(i,len(rellef[i])))
+            for j in rellef[i]:
+                f.write("\t%d"%(j))
+            f.write("\n")
+            f.write("%d\t%d"%(i,len(relrig[i])))
+            for j in relrig[i]:
+                f.write("\t%d"%(j))
+            f.write("\n")
+        f.close()
+        
+        rellef = {}     # r --> the in degree
+        totlef = {}     # r --> the number of in kinds of entities
+        relrig = {}
+        totrig = {}
+        # lef: {h, r}
+        # rig: {r, t}
+        for i in lef:
+            if not i[1] in rellef:
+                rellef[i[1]] = 0
+                totlef[i[1]] = 0
+            rellef[i[1]] += len(lef[i])
+            totlef[i[1]] += 1.0
 
-    relations_idx_dict = {rel[0]: value for value, rel in enumerate(sorted(
-        relations, key=lambda x: x[1]
-    ))}
+        for i in rig:
+            if not i[0] in relrig:
+                relrig[i[0]] = 0
+                totrig[i[0]] = 0
+            relrig[i[0]] += len(rig[i])
+            totrig[i[0]] += 1.0
+
+        s11=0
+        s1n=0
+        sn1=0
+        snn=0
+        f = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "test2id.txt"), "r")
+        tot = (int)(f.readline())
+        for i in range(tot):
+            content = f.readline()
+            h, r, t = [int(x) for x in content.strip().split()]
+            rign = rellef[r] / totlef[r]
+            lefn = relrig[r] / totrig[r]
+            if (rign < 1.5 and lefn < 1.5):
+                s11+=1
+            if (rign >= 1.5 and lefn < 1.5):
+                s1n+=1
+            if (rign < 1.5 and lefn >= 1.5):
+                sn1+=1
+            if (rign >= 1.5 and lefn >= 1.5):
+                snn+=1
+        f.close()
+
+
+        f = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "test2id.txt"), "r")
+        f11 = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "1-1.txt"), "w")
+        f1n = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "1-n.txt"), "w")
+        fn1 = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "n-1.txt"), "w")
+        fnn = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "n-n.txt"), "w")
+        fall = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "test2id_all.txt"), "w")
+        tot = (int)(f.readline())
+        fall.write("%d\n"%(tot))
+        f11.write("%d\n"%(s11))
+        f1n.write("%d\n"%(s1n))
+        fn1.write("%d\n"%(sn1))
+        fnn.write("%d\n"%(snn))
+        for i in range(tot):
+            content = f.readline()
+            h, r, t = [int(x) for x in content.strip().split()]
+            rign = rellef[r] / totlef[r]
+            lefn = relrig[r] / totrig[r]
+            if (rign < 1.5 and lefn < 1.5):
+                f11.write(content)
+                fall.write("0"+"\t"+content)
+            if (rign >= 1.5 and lefn < 1.5):
+                f1n.write(content)
+                fall.write("1"+"\t"+content)
+            if (rign < 1.5 and lefn >= 1.5):
+                fn1.write(content)
+                fall.write("2"+"\t"+content)
+            if (rign >= 1.5 and lefn >= 1.5):
+                fnn.write(content)
+                fall.write("3"+"\t"+content)
+        fall.close()
+        f.close()
+        f11.close()
+        f1n.close()
+        fn1.close()
+        fnn.close()
 
     return {
-        'train': np.asarray(_triplets_as_list(data['train'], entities_idx_dict, relations_idx_dict)),
-        'valid': np.asarray(_triplets_as_list(data['valid'], entities_idx_dict, relations_idx_dict)),
-        'test': np.asarray(_triplets_as_list(data['test'], entities_idx_dict, relations_idx_dict)),
+        'train': train2id,
+        'valid': valid2id,
+        'test': test2id,
+        'ent_dict': entities_idx_dict, 'rel_dict': relations_idx_dict,
         'name': data['name']
-    }, len(entities), len(relations)
+    }, {
+        'train': data['train'], 'valid': data['valid'], 'test': data['test'], 'name': data['name']
+        }, total_entities, total_relations
 
 
 def low_name(data_name_str):
@@ -311,9 +481,9 @@ def load_fb15k(original=False, clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    data, original_data, total_entities, total_relations = _str_to_idx(data)
     if original:
-        return data
-    data, total_entities, total_relations = _str_to_idx(data)
+        return _pprint(original_data, total_entities, total_relations, 'FB15k')
 
     return _pprint(data, total_entities, total_relations, 'FB15k')
 
@@ -368,9 +538,9 @@ def load_fb15k237(original=False, clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    data, original_data, total_entities, total_relations = _str_to_idx(data)
     if original:
-        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
-    data, total_entities, total_relations = _str_to_idx(data)
+        return _pprint(original_data, total_entities, total_relations, 'FB15k-237')
 
     return _pprint(data, total_entities, total_relations, 'FB15k-237')
 
@@ -428,9 +598,9 @@ def load_wn18(original=False, clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    data, original_data, total_entities, total_relations = _str_to_idx(data)
     if original:
-        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
-    data, total_entities, total_relations = _str_to_idx(data)
+        return _pprint(original_data, total_entities, total_relations, 'WN18')
 
     return _pprint(data, total_entities, total_relations, 'WN18')
 
@@ -488,9 +658,9 @@ def load_wn18rr(original=False, clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    data, original_data, total_entities, total_relations = _str_to_idx(data)
     if original:
-        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
-    data, total_entities, total_relations = _str_to_idx(data)
+        return _pprint(original_data, total_entities, total_relations, 'WN18RR')
 
     return _pprint(data, total_entities, total_relations, 'WN18RR')
 
@@ -545,9 +715,9 @@ def load_yago3_10(original=False, clean_unseen=True):
     data = _load_data(fdir, data_name, data_sha1)
 
     data = _clean_data(data) if clean_unseen else data
+    data, original_data, total_entities, total_relations = _str_to_idx(data)
     if original:
-        return data, len(set(data['train'][:, 0])), len(set(data['train'][:,1]))
-    data, total_entities, total_relations = _str_to_idx(data)
+        return _pprint(original_data, total_entities, total_relations, 'YAGO3-10')
 
     return _pprint(data, total_entities, total_relations, 'YAGO3-10')
 
