@@ -1,0 +1,2 @@
+include kgraph/release/Base.so
+recursive-include kgraph/release Base.so

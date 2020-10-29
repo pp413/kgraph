@@ -1,8 +1,28 @@
 # kgraph
-A Python library for Graph Embedding on knowledge graphs
+A Python library for Graph Embedding on knowledge graphs. Most of the code in this library from an Open-source Framework  OpenKE.
 
+[OpenKE-PyTorch]: https://github.com/thunlp/OpenKE	"openke"
 
 kgraph 是一个知识图谱在知识表示研究上的 ，主要解决常见数据的预处理、加载以及常用的评估。
+
+
+
+If you use the code, please cite the following papers:
+
+```tex
+@inproceedings{han2018openke,
+   title={OpenKE: An Open Toolkit for Knowledge Embedding},
+   author={Han, Xu and Cao, Shulin and Lv Xin and Lin, Yankai and Liu, Zhiyuan and Sun, Maosong and Li, Juanzi},
+   booktitle={Proceedings of EMNLP},
+   year={2018}
+ }
+```
+
+
+
+
+
+
 
 ### kgraph 主要功能
 
