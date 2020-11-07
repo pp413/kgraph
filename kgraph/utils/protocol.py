@@ -161,34 +161,35 @@ def double_data_cal(function, data, num_ent=0, num_rel=0, batch_size=512,
     return (tranks, tfranks), (hranks, hfranks)
 
 def select_head(data):
-    left_entity = {}
-    right_entity = {}
-    rel = set()
+    left_entity = {}    # the entity on the left of relation in a triplet.
+    right_entity = {}     # the entity on the right of relation in a triplet.
+    rel_set = set()
     
     for fp in ['train', 'valid', 'test']:
         for triplet in data[fp]:
-            rel.add(triplet[1])
-            if triplet[1] not in left_entity:
-                left_entity[triplet[1]] = {}
-            if triplet[0] not in left_entity[triplet[1]]:
-                left_entity[triplet[1]][triplet[0]] = 0
-            left_entity[triplet[1]][triplet[0]] += 1
+            src, rel, dst = triplet[0], triplet[1], triplet[2]
+            rel_set.add(rel)
+            if rel not in left_entity:
+                left_entity[rel] = {}
+            if src not in left_entity[rel]:
+                left_entity[rel][src] = 0
+            left_entity[rel][src] += 1
             
-            if triplet[1] not in right_entity:
-                right_entity[triplet[1]] = {}
-            if triplet[2] not in right_entity[triplet[1]]:
-                right_entity[triplet[1]][triplet[2]] = 0
-            right_entity[triplet[1]][triplet[2]] += 1
+            if rel not in right_entity:
+                right_entity[rel] = {}
+            if dst not in right_entity[rel]:
+                right_entity[rel][dst] = 0
+            right_entity[rel][dst] += 1
     
     left_avg = {}
-    for i in range(len(rel)):
+    for i in list(rel_set):
         left_avg[i] = sum(left_entity[i].values()) * 1.0 / len(left_entity[i])
     right_avg = {}
-    for i in range(len(rel)):
+    for i in list(rel_set):
         right_avg[i] = sum(right_entity[i].values()) * 1.0 / len(right_entity[i])
     headSelector = {}
-    for i in range(len(rel)):
-        headSelector[i] = 1000 * right_avg[i] / (left_avg[i] + right_avg[i])
+    for i in list(rel_set):
+        headSelector[i] = 1.0 * left_avg[i] / (left_avg[i] + right_avg[i])
     return headSelector
 
 
@@ -316,7 +317,6 @@ class Base():
         tb.float_format = "2.3"
         
         print(tb)
-        
         tb = tb.get_string()
         
         with open(filename, 'a') as f:
@@ -344,7 +344,7 @@ class TrainEval_By_Triplet(Base):
         neg_samples = np.tile(pos_samples, (self.negative_rate, 1))
         labels = np.ones(size * (self.negative_rate + 1),
                          dtype=np.float32) * (-1.)
-        labels[: size] = 1
+        labels[: size] += 2
         
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
