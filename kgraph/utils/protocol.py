@@ -233,15 +233,33 @@ class Base():
         if len(batch_data) == 1:
             batch_label = batch_data[-1][:, 2]
             batch_data = [batch_data[0], batch_label]
-        return self.loss(*batch_data)
+        loss = self.loss(*batch_data)
+        self.opt.zero_grad()
+        loss.backward()
+        self.opt.step()
+        return loss.item()
     
     def sample_iter(self, **kwargs):
         pass
     
     def train_iter(self, **kwargs):
-        return self.sample_iter(**kwargs)
+        # return self.sample_iter(**kwargs)
+        if self.reverse:
+            train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
+        else:
+            train_data = np.random.permutation(self.data['train'])
+        batch_size = self.batch_size
+        if self.global_triplets is None:
+            self.global_triplets = get_all_triplets_set(train_data)
+        pbar = trange(self.num_batch, ncols=120)
+        avg_loss = []
+        for i in pbar:
+            epoch, loss = yield self.sample_iter(train_data[i*batch_size: (i+1)*batch_size,:], **kwarges)
+            pbar.set_description(desc=f'Epoch {epoch:<3d}')
+            avg_loss.append(loss)
+            pbar.set_postfix(BatchLoss=f'{loss:<.4f}', AvgLoss=f'{np.mean(avg_loss):<.4f}')
     
-    def fit(self, num_epoch=1, batch_size=None, step=50, gamma=0.99, **kwargs):
+    def fit(self, num_epoch=1, batch_size=None, scheduler_step=50, gamma=0.99, **kwargs):
         if 'num_epoch' in self.__dict__.keys():
             num_epoch = self.num_epoch
         if batch_size is None:
@@ -250,20 +268,16 @@ class Base():
             else:
                 batch_size = self.batch_size
         scheduler = torch.optim.lr_scheduler.StepLR(
-            self.opt, step_size=step, gamma=gamma
-        )
+            self.opt, step_size=scheduler_step, gamma=gamma)
         
         for i in range(num_epoch):
-            avg_loss = []
-            for data in self.train_iter(**kwargs):
-                loss = self.train_step(*data)
-                self.opt.zero_grad()
-                loss.backward()
-                self.opt.step()
-                avg_loss.append(loss.item())
-
-            print(f'Epoch: {i+1}, Avg Loss: {np.mean(avg_loss):.5f}')
-            print()
+            train_consume = self.train_iter(**kwargs)
+            data = next(train_consume)
+            for _ in range(self.num_batch):
+                try:
+                    data = train_consume.send((i, self.train_step(*data)))
+                except StopIteration:
+                    break
     
     def cal_rank(self, flags):
         if flags == 'original':
@@ -317,6 +331,7 @@ class Base():
         tb.float_format = "2.3"
         
         print(tb)
+        
         tb = tb.get_string()
         
         with open(filename, 'a') as f:
