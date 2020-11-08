@@ -195,13 +195,12 @@ def select_head(data):
 
 class Base():
     def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001,
-                 loss=None, batch_size=1, device='cpu', **kwargs):
+                 loss_function=None, batch_size=1, device='cpu', **kwargs):
         self.num_ent = num_ent
         self.num_rel = num_rel
         self.data = data
         self.head_selector = select_head(data)
         
-        self.loss = loss
         self.device = device
         for k, v in kwargs.items():
             self.__dict__[k] = v
@@ -209,17 +208,22 @@ class Base():
         print(model)
         print('The model is running on the device of {}'.format(device))
         print()
-        self.use_torch_loss = True
-        if loss is None:
-            self.loss = model.loss
-            self.use_torch_loss = False
-
+        
         self.model = model.to(device)
+        self.use_torch_loss = True
+        if loss_function is None:
+            self.loss = model.forward
+            self.use_torch_loss = False
+        else:
+            self.loss = loss_function(self.model)
+
         self.opt = opt(self.model.parameters(), lr=lr)
 
         self.size = {k: len(v) for k, v in data.items()}
         self.num_batch = len(data['train']) // batch_size + 1
         self.batch_size = batch_size
+        
+        self.valid_write_at_epoch_id = None
     
     def set_opt(self, opt):
         self.opt = opt
@@ -239,12 +243,13 @@ class Base():
         self.opt.step()
         return loss.item()
     
-    def sample_iter(self, **kwargs):
+    def sample_iter(self, *data, **kwargs):
         pass
     
     def train_iter(self, **kwargs):
         # return self.sample_iter(**kwargs)
-        if self.reverse:
+        # print(self.__dict__)
+        if 'reverse' in self.__dict__.keys() and self.reverse:
             train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
         else:
             train_data = np.random.permutation(self.data['train'])
@@ -254,8 +259,8 @@ class Base():
         pbar = trange(self.num_batch, ncols=120)
         avg_loss = []
         for i in pbar:
-            epoch, loss = yield self.sample_iter(train_data[i*batch_size: (i+1)*batch_size,:], **kwarges)
-            pbar.set_description(desc=f'Epoch {epoch:<3d}')
+            epoch, loss = yield self.sample_iter(train_data[i*batch_size: (i+1)*batch_size,:], **kwargs)
+            pbar.set_description(desc=f'Epoch {epoch+1:<3d}')
             avg_loss.append(loss)
             pbar.set_postfix(BatchLoss=f'{loss:<.4f}', AvgLoss=f'{np.mean(avg_loss):<.4f}')
     
@@ -289,7 +294,9 @@ class Base():
             
             if (i+1) % scheduler_step == 0:
                 scheduler.step()
-                self.eval(valid_predict, 'valid', self.batch_size, filename='validConf.txt')
+                if not valid_predict is None:
+                    self.valid_write_at_epoch_id = i+1
+                    self.eval(valid_predict, 'valid', self.batch_size, filename='validConf.txt')
     
     def cal_rank(self, flags):
         if flags == 'original':
@@ -313,20 +320,24 @@ class Base():
         if isinstance(test_data, str):
             if test_data == 'test':
                 test_data = self.data['test']
-                print('Evaluating on the test dataset')
+                print('Evaluating on the test dataset.')
             else:
                 test_data = self.data['valid']
-                print('Evaluating on the test dataset')
+                print(f'Evaluating on the valid dataset at epoch {self.valid_write_at_epoch_id}.')
         else:
             print('Waiting For the evaluation...')
         data_name = self.data['name']
         fs = filename.split('.')[0]
         filename = f'{fs} {chr(960)} {data_name}.txt'
         (tranks, tfranks), (hranks, hfranks) = self.cal_rank(flags)(
-            function, test_data, self.num_ent, self.num_rel, batch_size, self.data, self.device
+            function(self.model), test_data, self.num_ent, self.num_rel, batch_size, self.data, self.device
         )
         now = arrow.now().format(' YYYY-MM-DD HH:mm:ss')
-        pprint('\t The results of calulating the ranks on ' + data_name + now, filename)
+        if self.valid_write_at_epoch_id is None:
+            pprint('\t The results of calulating the ranks on ' + data_name + now, filename)
+        else:
+            pprint('\t The results of calulating the ranks on ' + data_name+ ' at Epoch '
+                   + str(self.valid_write_at_epoch_id) + arrow.now().format(' HH:mm:ss'), filename)
         tb = pt.PrettyTable()
         tb.float_format = "2.3"
         tb.field_names = [' Evaluation ', 'MR', 'MRR (%)', 'Hits@1 (%)', 'Hits@3 (%)', 'Hits@10 (%)']
@@ -353,10 +364,10 @@ class Base():
 
 class TrainEval_By_Triplet(Base):
     
-    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001, loss=None,
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001, loss_function=None,
                  negative_rate=1, batch_size=0, device='cpu', reverse=False):
         super(TrainEval_By_Triplet, self).__init__(data=data, num_ent=num_ent, lr=lr,
-                                    num_rel=num_rel, model=model, opt=opt, loss=loss,
+                                    num_rel=num_rel, model=model, opt=opt, loss_function=loss_function,
                                     device=device, negative_rate=negative_rate,
                                     global_triplets=get_all_triplets_set(data),
                                     batch_size=batch_size, reverse=reverse)
@@ -366,7 +377,6 @@ class TrainEval_By_Triplet(Base):
     
     def negative_sample(self, pos_samples):
         size = len(pos_samples)
-        self.negative_rate = int(self.negative_rate)
         num_to_generate = size * self.negative_rate
         neg_samples = np.tile(pos_samples, (self.negative_rate, 1))
         labels = np.ones(size * (self.negative_rate + 1),
@@ -376,7 +386,6 @@ class TrainEval_By_Triplet(Base):
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
         prob = np.array([self.head_selector[i[1]] for i in neg_samples])
-        
         subj = choices <= prob
         obj = choices > prob
         neg_samples[subj, 0] = values[subj]
@@ -393,53 +402,36 @@ class TrainEval_By_Triplet(Base):
                     neg_samples[i, 2] = np.random.choice(self.num_ent)
         return [np.concatenate((pos_samples, neg_samples)).astype('int64'), labels]
 
-    def sample_iter(self):
-        if self.reverse:
-            train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
-        else:
-            train_data = np.random.permutation(self.data['train'])
-        batch_size = self.batch_size
-        
-        if self.global_triplets is None:
-            self.global_triplets = get_triplets_set(train_data)
-        
-        for i in trange(self.num_batch, ncols=100):
-            yield self.negative_sample(train_data[i * batch_size: (i + 1) * batch_size, :])
+    def sample_iter(self, *data):
+        return self.negative_sample(*data)
      
 
 class TrainEval_By_Pair(Base):
     
-    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss=None,
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss_function=None,
                  batch_size=0, lr=0.001, device='cpu', reverse=False):
         super(TrainEval_By_Pair, self).__init__(
-            data=data, num_ent=num_ent, num_rel=num_rel, model=model, opt=opt, loss=loss,
+            data=data, num_ent=num_ent, num_rel=num_rel, model=model, opt=opt, loss_function=loss_function,
             batch_size=batch_size, device=device, reverse=reverse, lr=lr
         )
         if reverse:
             len_data = len(data['train']) * 2
             self.num_batch = len_data // batch_size + 1
     
-    def sample_iter(self):
-        if self.reverse:
-            train_data = np.random.permutation(add_reverse(self.data['train'], self.num_rel))
-        else:
-            train_data = np.random.permutation(self.data['train'])
-        train_data = train_data.astype('int64')
-        batch_size = self.batch_size
-        for i in trange(self.num_batch, ncols=100):
-            yield [train_data[i * batch_size: (i + 1) * batch_size, :]]
+    def sample_iter(self, *data):
+        return data
 
 
 class TrainEval_For_Trans(Base):
     
-    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss=None,
+    def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss_function=None,
                  batch_size=0, device='cpu', lr=0.001):
         super(TrainEval_For_Trans, self).__init__(data=data, num_ent=num_ent,
-                                    num_rel=num_rel, model=model, opt=opt, loss=loss,
+                                    num_rel=num_rel, model=model, opt=opt, lloss_function=loss_function,
                                     device=device, batch_size=batch_size, lr=lr,
                                     global_triplets=get_all_triplets_set(data))
     
-    def sample(self):  
+    def sample(self, pos_data):  
         def filt(samples, all_train_triplet, for_neg_head=True):
             for i, s in enumerate(samples):
                 triplet = (s[0], s[1], s[2])
@@ -450,16 +442,14 @@ class TrainEval_For_Trans(Base):
                     else:
                         samples[i, 2] = np.random.choice(self.num_ent)
                         triplet = (s[0], s[1], samples[i, 2])
-                    
         
         global_triplets = self.global_triplets
-        train_data = self.data['train']
+        train_data = pos_data
         
-        num_to_generate = self.size['train']
+        num_to_generate = len(pos_data)
         values = np.random.randint(self.num_ent, size=num_to_generate)
         choices = np.random.uniform(size=num_to_generate)
         p = np.array([self.head_selector[i[1]] for i in train_data])
-        
         subj = choices <= p
         obj = choices > p
         
@@ -479,10 +469,6 @@ class TrainEval_For_Trans(Base):
             
         return pos_samples[ret_index].astype('int64'), neg_samples[ret_index].astype('int64')
     
-    def sample_iter(self):
-        pos, neg = self.sample()
-        bs = self.batch_size
-        for i in trange(self.num_batch, ncols=100):
-            i = i * bs
-            yield [pos[i: i+bs, :], neg[i: i+bs, :]]
+    def sample_iter(self, *data):
+        return self.sample(*data)
 

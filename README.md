@@ -174,6 +174,93 @@ kgraph.utils 模块主要解决模型的测试功能。值得注意的是模块�
 BaseEval类是一个基类。
 
 
+### TrainEval_For_Trans
+TrainEval_For_Trans类是基于BaseEval的子类
+
+```python
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from datasets import load_fb15k237
+from kgraph.utils import TrainEval_For_Trans
+
+device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+data, num_ent, num_rel = load_fb15k237()
+
+class TransE(nn.Module):
+    def __init__(self, num_ent: int, num_rel: int, dim: int, margin_value: float=5.):
+        super(TransE, self).__init__()
+        
+        self.margin = margin_value
+        self.k = int(num_ent)
+        
+        self.ent_embeddings = nn.Embedding(num_ent, dim)
+        self.rel_embeddings = nn.Embedding(num_rel, dim)
+        
+        nn.init.xavier_uniform_(self.ent_embeddings.weight.data)
+        nn.init.xavier_uniform_(self.rel_embeddings.weight.data)
+        
+    def embed_lookup(self, data):
+        # print(torch.max(data, dim=0))
+        head = self.ent_embeddings(data[:, 0])
+        rel = self.rel_embeddings(data[:, 1])
+        tail = self.ent_embeddings(data[:, 2])
+        return head, rel, tail
+    
+    def regul(self, data):
+        head, rel, tail = self.embed_lookup(data)
+        reg = (torch.mean(head ** 2) +
+               torch.mean(rel ** 2) +
+               torch.mean(tail ** 2)) / 3.
+        
+        return reg
+    
+    def forward(self, pos_samples, neg_samples):
+        pos_distance = self.score(pos_samples)
+        neg_distance = self.score(neg_samples)
+        
+        return F.relu(self.margin + pos_distance - neg_distance).mean()
+    
+    def score(self, samples):
+        head, rel, tail = self.embed_lookup(samples)
+        head = F.normalize(head, 2, -1)
+        rel = F.normalize(rel, 2, -1)
+        tail = F.normalize(tail, 2, -1)
+        
+        return torch.norm(head + rel - tail, p=1, dim=-1).flatten()
+
+def loss_function(model):
+    def f(pos_data, neg_data):
+        model.train()
+          if isinstance(data, np.ndarray):
+              data = torch.from_numpy(data).to(device)
+          loss = model(pos_data, neg_data) + 0.005 * (self.regul(pos_data) + self.regul(neg_data))
+          return loss
+    return f
+
+def eva_function(model):
+    def f(data):
+        model.eval()
+        with torch.no_grad():
+            if isinstance(data, np.ndarray):
+                data = torch.from_numpy(data).to(device)
+            score = model.score(data)
+            return -score
+    return f
+
+model = TransE(num_ent, num_rel, dim=200).to(device)
+process = TrainEval_For_Trans(data=data, num_ent=num_ent, num_rel=num_rel, lr=0.001, model=model,
+                      opt=optim.Adam, batch_size=10000, loss_function=loss_function, device=device)
+
+process.fit(num_epoch=1000, scheduler_step=100, valid_predict=eva_function)
+torch.save(model.state_dict(), 'transe.ckpt')
+model.load_state_dict(torch.load('transe.ckpt'))
+process.eval(eva_function, batch_size=10000)
+
+```
+
 
 ### TrainEval_By_Triplet
 
@@ -183,18 +270,5 @@ batchData \in \mathbb{R}^{batchSize\times 3} \\
 batchLabel \in \mathbb{R}^{batchSize}.
 $$
 
-```python
-from kgraph.utils import TrainEval_By_Triplet
-
-trainEval = TrainEval_By_Triplet(num_ent, num_rel, data)
-
-for batch_data, batch_labels in trainEval.sample_iter(batch_size=1000, negative_rate=1):
-    batch_data = torch.from_numpy(batch_data).to(device)
-    batch_labels = torch.from_numpy(batch_labels).to(device)
-
-
-train.eval(predict_function_name, test_data, batch_size=512, flags='original',
-           filename='conf.txt', device='cpu')
-```
 
 需要注意的是在标签中正样本的标签是1，负样本的标签是-1.
