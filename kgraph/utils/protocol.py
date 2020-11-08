@@ -259,7 +259,15 @@ class Base():
             avg_loss.append(loss)
             pbar.set_postfix(BatchLoss=f'{loss:<.4f}', AvgLoss=f'{np.mean(avg_loss):<.4f}')
     
-    def fit(self, num_epoch=1, batch_size=None, scheduler_step=50, gamma=0.99, **kwargs):
+    def fit(self, num_epoch=1, batch_size=None, scheduler_step=50, gamma=0.99, valid_predict=None, **kwargs):
+        '''
+        Args:
+        num_epoch: Number of training epoch.
+        batch_size: Batch size.
+        scheduler_step: the step of scheduler method StepLR.
+        gamma: the gamma in StepLR.
+        valid_predict: the predict function of model in valid processing.
+        '''
         if 'num_epoch' in self.__dict__.keys():
             num_epoch = self.num_epoch
         if batch_size is None:
@@ -278,6 +286,10 @@ class Base():
                     data = train_consume.send((i, self.train_step(*data)))
                 except StopIteration:
                     break
+            
+            if (i+1) % scheduler_step == 0:
+                scheduler.step()
+                self.eval(valid_predict, 'valid', self.batch_size, filename='validConf.txt')
     
     def cal_rank(self, flags):
         if flags == 'original':
