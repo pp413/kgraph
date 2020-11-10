@@ -365,7 +365,7 @@ class Base():
 class TrainEval_By_Triplet(Base):
     
     def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, lr=0.001, loss_function=None,
-                 negative_rate=1, batch_size=0, device='cpu', reverse=False):
+                 negative_rate=1, batch_size=0, device='cpu', reverse=False, use_negative_sample=True):
         super(TrainEval_By_Triplet, self).__init__(data=data, num_ent=num_ent, lr=lr,
                                     num_rel=num_rel, model=model, opt=opt, loss_function=loss_function,
                                     device=device, negative_rate=negative_rate,
@@ -374,6 +374,7 @@ class TrainEval_By_Triplet(Base):
         if reverse:
             len_data = len(data['train']) * 2
             self.num_batch = len_data // batch_size + 1
+        self.use_negative_sample = use_negative_sample
     
     def negative_sample(self, pos_samples):
         size = len(pos_samples)
@@ -391,15 +392,16 @@ class TrainEval_By_Triplet(Base):
         neg_samples[subj, 0] = values[subj]
         neg_samples[obj, 2] = values[obj]
         
-        for i, p in enumerate(choices):
-            while True:
-                triplet = (neg_samples[i, 0], neg_samples[i, 1], neg_samples[i, 2])
-                if triplet not in self.global_triplets:
-                    break
-                if p <= prob[i]:
-                    neg_samples[i, 0] = np.random.choice(self.num_ent)
-                else:
-                    neg_samples[i, 2] = np.random.choice(self.num_ent)
+        if not self.use_negative_sample:
+            for i, p in enumerate(choices):
+                while True:
+                    triplet = (neg_samples[i, 0], neg_samples[i, 1], neg_samples[i, 2])
+                    if triplet not in self.global_triplets:
+                        break
+                    if p <= prob[i]:
+                        neg_samples[i, 0] = np.random.choice(self.num_ent)
+                    else:
+                        neg_samples[i, 2] = np.random.choice(self.num_ent)
         return [np.concatenate((pos_samples, neg_samples)).astype('int64'), labels]
 
     def sample_iter(self, *data):
@@ -409,7 +411,7 @@ class TrainEval_By_Triplet(Base):
 class TrainEval_By_Pair(Base):
     
     def __init__(self, data=None, num_ent=0, num_rel=0, model=None, opt=None, loss_function=None,
-                 batch_size=0, lr=0.001, device='cpu', reverse=False):
+                 batch_size=0, lr=0.001, device='cpu', reverse=False, use_negative_sample=True):
         super(TrainEval_By_Pair, self).__init__(
             data=data, num_ent=num_ent, num_rel=num_rel, model=model, opt=opt, loss_function=loss_function,
             batch_size=batch_size, device=device, reverse=reverse, lr=lr
@@ -417,6 +419,8 @@ class TrainEval_By_Pair(Base):
         if reverse:
             len_data = len(data['train']) * 2
             self.num_batch = len_data // batch_size + 1
+        
+        self.use_negative_sample = use_negative_sample
     
     def sample_iter(self, *data):
         return data
@@ -456,12 +460,14 @@ class TrainEval_For_Trans(Base):
         pos_head_samples = train_data[subj, :]
         neg_head_samples = pos_head_samples.copy()
         neg_head_samples[:, 0] = values[subj]
-        filt(neg_head_samples, global_triplets)
+        if not self.use_negative_sample:
+            filt(neg_head_samples, global_triplets)
         
         pos_tail_samples = train_data[obj, :]
         neg_tail_samples = pos_tail_samples.copy()
         neg_tail_samples[:, 2] = values[obj]
-        filt(neg_tail_samples, global_triplets, for_neg_head=False)
+        if not self.use_negative_sample:
+            filt(neg_tail_samples, global_triplets, for_neg_head=False)
         
         pos_samples = np.concatenate((pos_head_samples, pos_tail_samples))
         neg_samples = np.concatenate((neg_head_samples, neg_tail_samples))
