@@ -495,7 +495,7 @@ def pprint(data, total_entities, total_relations, dataName=''):
     test_len = data['total_test']
     
     filename = os.path.join(os.environ['KG_DIR'], 'statistics.txt')
-    row_data, data_names = load_table(filename) if os.path.exists(filename) else None
+    row_data, data_names = load_table(filename) if os.path.exists(filename) else (None, [])
         
     tb = pt.PrettyTable()
     tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']

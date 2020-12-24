@@ -72,11 +72,10 @@ class Module(nn.Module):
         
         print()
         print('Link prediction')
-        
         device = self.__temp.device
         link_prediction(self.predict, self.name(), dataset, dataset.entity_total,
                         dataset.relation_total, test_flag, None, batch_eval_size,
-                        flags, device)
+                        True, flags, device)
     
     def link_n2n_prediction(self, dataset, batch_eval_size=2048, flags='original',
                             predtrain_model_file=None):
@@ -87,9 +86,7 @@ class Module(nn.Module):
             fl = f'{model_name} on {dataset_name}.tgz'
             predtrain_model_file = os.path.join(predtrain_model_file, fl)
         self.load_checkpoint(predtrain_model_file)
-        
         print()
-        
         device = self.__temp.device
         link_n2n_prediction(self.predict, self.name(), dataset, dataset.entity_total,
                             dataset.relation_total, batch_eval_size, flags, device)

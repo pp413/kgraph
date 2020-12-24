@@ -101,7 +101,6 @@ def calculate_ranks(target_function, data, num_ent=0, batch_size=512, pair_filte
             scores = np.zeros(num_ent)
             for pair in tbar:
                 scores -= scores
-                
                 new_pairs = np.tile(pair.reshape((1, -1)), (num_ent, 1))
                 new_triplets = np.concatenate((new_pairs, new_ents), 1)
                 if not pred_tail:
@@ -189,6 +188,7 @@ def link_prediction(function, model_name, data, num_ent, num_rel, test_flag='tes
         os.makedirs(dir_path)
     
     file_now = arrow.now().format('YYYY-MM-DD')
+    print(device)
     
     file_name = f'{file_now}_{model_name}_{chr(960)}_{data_name}.txt'
     file_path = os.path.join(dir_path, file_name)

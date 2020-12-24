@@ -31,6 +31,12 @@ KG_BENCHMARK_DATASETS = ['WN18', 'WN18RR', 'FB15k', 'FB15k-237']
 def _load_data(data_name, data_sha1, path=None, original=False):
     url = get_from_aigraph_url(data_name)
     path = set_download_dir(path)
+    data_name = data_name.lower()
+    data_name = 'wn18RR' if data_name == 'wn18rr' else data_name
+    
+    print(url)
+    print(path)
+    print(data_name)
     
     taz_path = download(url, path)
     fdir = os.path.join(os.environ['KG_DIR'], data_name)
