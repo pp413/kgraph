@@ -63,7 +63,7 @@ def _calculate_ranks(pred_function, data, unique_entities, batch_size, device,
     
     graph = build_graph(data)
     
-    num_batchs = num_ent // batch_size + 1
+    num_batchs = (num_ent - 1) // batch_size + 1
     _ranks, _franks = [], []
     
     try:
