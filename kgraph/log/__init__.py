@@ -2,11 +2,9 @@
 # -*- coding: utf-8 -*-
 #
 # @ Author: Yao Shuang-Long
-# @ Date: 2020/12/22 16:51:03
+# @ Date: 2021/02/27 20:54:05
 # @ Summary: the summary.
 # @ Contact: xxxxxxxx@email.com
 # @ Paper Link: 
 #
-
-from .log import get_parameters
-from .log import save_checkpoint
+from ._log import log_pred

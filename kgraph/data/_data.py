@@ -14,15 +14,7 @@ import sys
 
 import numpy as np
 
-from ..data import load_from_csv, load_from_text
-from ..data import build_graph
-from ..data import get_all_triples
-
-from ..data.data_utils import get_from_aigraph_url, download
-from ..data.data_utils import extract_archive, clean_data
-from ..data.data_utils import  load_and_check_original_data
-from ..data.data_utils import str_to_idx, get_select_src_rate
-from ..data.data_utils import pprint, set_download_dir
+from ._utils import *
 
 
 KG_BENCHMARK_DATASETS = ['WN18', 'WN18RR', 'FB15k', 'FB15k-237']
@@ -31,19 +23,13 @@ KG_BENCHMARK_DATASETS = ['WN18', 'WN18RR', 'FB15k', 'FB15k-237']
 def _load_data(data_name, data_sha1, path=None, original=False):
     url = get_from_aigraph_url(data_name)
     path = set_download_dir(path)
-    data_name = data_name.lower()
-    data_name = 'wn18RR' if data_name == 'wn18rr' else data_name
-    
-    print(url)
-    print(path)
-    print(data_name)
     
     taz_path = download(url, path)
-    fdir = os.path.join(os.environ['KG_DIR'], data_name)
+    data_dir = os.path.join(os.environ['KG_DIR'], data_name)
     
-    extract_archive(taz_path, fdir)
+    extract_archive(taz_path, data_dir)
     
-    data = load_and_check_original_data(fdir, data_name, data_sha1)
+    data = load_and_check_original_data(data_dir, data_name, data_sha1)
     
     data = clean_data(data)
     
@@ -225,15 +211,39 @@ def load_all_datasets(path=None):
 
 
 class DataBase():
+    r"""
+    The Base Data Class.
     
-    def __init__(self, data_name, path=None):
+    Arguments:
+        data_name: Name of Dataset.
+        data: a dict type of Dataset, {'train': train_id_array, 'test': test_id_array, 'valid': valid_id_array,
+              'entity_total': the number of entities, 'relation_total': the number of relations}
+        path: the path of these benchmark datasets in Kgraph, default, '~/.KGDataSets'.
+
+    """
+    
+    def __init__(self, data_name='DataName', data=None, path=None) -> None:
+        if data is None and data_name in KG_BENCHMARK_DATASETS:
+            self.__initialized(data_name, path=path)
+        else:
+            self.data = data
+            self._entity_total = data['entity_total']
+            self._relation_total = data['relation_total']
+            
+            self.dir_name = None
+            self.fdir = '_None_'
+
+            
+    def __initialized(self, data_name, path=None):
         
         kg_benchmark_dataset = set([x.lower() for x in KG_BENCHMARK_DATASETS])
-        dir_name = data_name.lower()
-        assert dir_name in kg_benchmark_dataset, f'{data_name} is not in benchmark datasets.'
+        print(data_name)
+        # dir_name = data_name.lower()
+        dir_name = data_name
+        assert dir_name not in kg_benchmark_dataset, f'{data_name} is not in benchmark datasets.'
         
         self.path = path
-        self.dir_name = 'wn18RR' if dir_name == 'wn18rr' else dir_name
+        self.dir_name = dir_name
         
         self.filenames = [
             '1-1.txt',
@@ -249,13 +259,46 @@ class DataBase():
             'test2id_all.txt'
         ]
         
-        self.data, self.entity_total, self.relation_total = self.load_dataset()
+        self.fdir = os.path.join(os.environ['KG_DIR'], data_name)
+        if not os.path.exists(os.path.join(os.environ['KG_DIR'], 'statistics.txt')):
+            self.data, self._entity_total, self._relation_total = self.load_dataset()
+        
+        row_data, data_names = load_table(os.path.join(os.environ['KG_DIR'], 'statistics.txt'))
+        # data_names = list(data_names)
+        # data_names = set([data_names[i].lower() for i in range(len(data_names))])
+        
+        # if not os.path.exists(self.fdir):
+        if dir_name not in data_names:
+            self.data, self._entity_total, self._relation_total = self.load_dataset()
+        
+        else:
+            tb = pt.PrettyTable(header=True)
+            tb.title = f'The statistics of benchmark datasets.'
+            tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']
+            if row_data is not None:
+                for line in row_data:
+                    tb.add_row(line)
+            print(tb)
+
+            _row_data = {row_data[i][0]: row_data[i][1:] for i in range(len(row_data))}
+            
+            self._entity_total = _row_data[dir_name][3]
+            self._relation_total = _row_data[dir_name][4]
     
     @property
     def name(self):
         return self.dir_name
     
-    def len(self):
+    @property
+    def entity_total(self):
+        return int(self._entity_total)
+    
+    @property
+    def relation_total(self):
+        return int(self._relation_total)
+    
+    @property
+    def size(self):
         return len(self.data['train'])
     
     def load_dataset(self):
@@ -269,34 +312,50 @@ class DataBase():
             return load_wn18rr(path=self.path)
     
     def load_1_1(self):
+        if self.dir_name is None:
+            return None
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, '1-1.txt')
         return load_from_text(file_path=file_path, dtype=np.int64)
     
     def load_1_n(self):
+        if self.dir_name is None:
+            return None
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, '1-n.txt')
         return load_from_text(file_path=file_path, dtype=np.int64)
     
     def load_n_1(self):
+        if self.dir_name is None:
+            return None
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'n-1.txt')
         return load_from_text(file_path=file_path, dtype=np.int64)
     
     def load_n_n(self):
+        if self.dir_name is None:
+            return None
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'n-n.txt')
         return load_from_text(file_path=file_path, dtype=np.int64)
     
     def load_train(self):
+        if not os.path.exists(self.fdir):
+            return self.data['train']
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'train.csv')
         return load_from_csv(file_path=file_path, dtype=np.int64)
     
     def load_test(self):
+        if not os.path.exists(self.fdir):
+            return self.data['test']
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'test.csv')
         return load_from_csv(file_path=file_path, dtype=np.int64)
     
     def load_valid(self):
+        if not os.path.exists(self.fdir):
+            return self.data['valid']
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'valid.csv')
         return load_from_csv(file_path=file_path, dtype=np.int64)
     
     def load_constraint(self):
+        if self.dir_name is None:
+            return None
         file_path = os.path.join(os.environ['KG_DIR'], self.dir_name, 'constraint.txt')
         constraint = {'rel_src': {}, 'rel_dst': {}}
         with open(file_path, 'r') as f:
@@ -307,16 +366,43 @@ class DataBase():
                 else:
                     constraint['rel_dst'][line[0]] = set(line[2:])
         return constraint
+        
+    @property
+    def train(self):
+        return self.load_train()
     
-    @staticmethod
-    def _build_graph(data_array):
-        return build_graph(data_array)
+    @property
+    def test(self):
+        return self.load_test()
+    
+    @property
+    def valid(self):
+        return self.load_valid()
+    
+    @property
+    def unique_entities(self):
+        return np.unique(np.concatenate((self.train[:, 0], self.train[:, 2])))
+    
+    @property
+    def all_triples(self):
+        return np.concatenate((self.train, self.valid, self.test), 0)
+    
+    # @staticmethod
+    # def build_graph(data_array):
+    #     return build_graph(data_array)
     
     def get_all_triples(self):
-        return get_all_triples(self.data)
+        data = {'train': self.train, 'test': self.test, 'valid': self.valid}
+        return get_all_triples(data)
     
     def get_select_src_rate(self):
-        return get_select_src_rate(self.data)
+        data = {'train': self.train, 'test': self.test, 'valid': self.valid}
+        return get_select_src_rate(data)
+
+    @property
+    def select_src_rate(self):
+        return self.get_select_src_rate()
+    
     
 
 class FB15k(DataBase):

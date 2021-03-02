@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 #
 # @ Author: Yao Shuang-Long
-# @ Date: 2020/11/30 15:34:16
+# @ Date: 2021/02/27 13:46:03
 # @ Summary: the summary.
 # @ Contact: xxxxxxxx@email.com
 # @ Paper Link: 
@@ -138,54 +138,6 @@ def mrr_score(ranks):
         ranks = np.asarray(ranks)
     ranks = ranks.reshape(-1)
     return np.sum(1 / ranks) / len(ranks) * 100
-
-
-# def rank_score(y_true, y_pred, num_entities=None, pos_lab=1):
-#     """Rank of a triple
-
-#         The rank of a positive element against a list of negatives.
-
-#     .. math::
-
-#         rank_{(s, p, o)_i}
-
-#     Parameters
-#     ----------
-#     y_true : ndarray, shape [n]
-#         An array of binary labels. The array only contains one positive.
-#     y_pred : ndarray, shape [n]
-#         An array of scores, for the positive element and the n-1 negatives.
-#     pos_lab : int
-#         The value of the positive label (default = 1).
-
-#     Returns
-#     -------
-#     rank : int
-#         The rank of the positive element against the negatives.
-
-#     Examples
-#     --------
-#     >>> import numpy as np
-#     >>> from metrics import rank_score
-#     >>> y_pred = np.array([.434, .65, .21, .84])
-#     >>> y_true = np.array([0, 0, 1, 0])
-#     >>> rank_score(y_true, y_pred)
-#     np.array([4])
-#     """
-#     def _rank(x, y):
-#         return x - y
-    
-#     if num_entities is not None:
-#         y_true_bin = np.zeros(num_entities)
-#         y_true_bin[y_true] = 1
-#     else:
-#         y_true_bin = y_true
-#     idx = np.argsort(y_pred)[::-1]
-#     y_ord = y_true_bin[idx]
-#     rank = np.where(y_ord == pos_lab)[0] + 1
-#     rank = np.sort(rank)
-#     rank_idx = np.arange(rank.shape[0])
-#     return rank - rank_idx
 
 
 def mr_score(ranks):

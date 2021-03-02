@@ -17,6 +17,7 @@ import pandas as pd
 import numpy as np
 import prettytable as pt
 from collections import Counter
+from ._downloading import single_thread_download, ManyThreadDownload
 
 try:
     import requests
@@ -98,7 +99,7 @@ def check_sha1(filename, sha1_hash):
     return sha1.hexdigest() == sha1_hash
 
 
-def download(url, path=None, overwrite=False, retries=5, verify_ssl=True, log=True):
+def download(url, path=None, overwrite=False, retries=5, verify_ssl=True, num_workers=1):
     """Download a given URL.
 
     Codes borrowed from mxnet/gluon/utils.py
@@ -148,27 +149,20 @@ def download(url, path=None, overwrite=False, retries=5, verify_ssl=True, log=Tr
         if not os.path.exists(dirname):
             os.makedirs(dirname)
         while retries+1 > 0:
-            # Disable pyling too broad Exception
-            # pylint: disable=W0703
             try:
-                if log:
-                    print('Downloading %s from %s...' % (fname, url))
-                r = requests.get(url, stream=True, verify=verify_ssl)
-                if r.status_code != 200:
-                    raise RuntimeError("Failed downloading url %s" % url)
-                with open(fname, 'wb') as f:
-                    for chunk in r.iter_content(chunk_size=1024):
-                        if chunk:  # filter out keep-alive new chunks
-                            f.write(chunk)
+                if num_workers == 1:
+                    single_thread_download(url, fname)
+                else:
+                    many_thread_download = ManyThreadDownload()
+                    many_thread_download.run(url, fname)
                 break
             except Exception as e:
                 retries -= 1
                 if retries <= 0:
                     raise e
                 else:
-                    if log:
-                        print("download failed, retrying, {} attempt{} left"
-                              .format(retries, 's' if retries > 1 else ''))
+                    print("download failed, retrying, {} attempt{} left"
+                            .format(retries, 's' if retries > 1 else ''))
         
     return fname
 
@@ -212,19 +206,16 @@ def load_from_text(file_path, sep='\t', header=None, dtype=str):
     return df.values
 
 
-def load_from_csv(file_path, sep='\t', header=None):
-    df = pd.read_csv(file_path, sep=sep, header=header,
-                     names=None, dtype=str)
+def load_from_csv(file_path, dtype=str):
+    df = pd.read_csv(file_path, dtype=dtype)
     df = df.drop_duplicates()
     return df.values
 
 def write_to_csv(data, data_name, file_name, sep='\t', header=None):
     dir = os.path.join(os.environ.get('KG_DIR', os.getcwd()), data_name, file_name)
-    with open(dir, 'w') as f:
-        w = csv.writer(f)
-        if header is not None:
-            w.writerow(header)
-        w.writerows(data)
+    
+    df = pd.DataFrame(data, columns=['src', 'rel', 'dst'])
+    df.to_csv(dir, index=0)
             
 def write_dataset(data_id, data_name , name='train2id.txt'):
     f = open(os.path.join(os.environ.get('KG_DIR'), data_name, name), 'w')
@@ -242,10 +233,13 @@ def write_str2id(data_dict, data_name, name='entity2id.txt'):
         f.write("%s\t%d\n"%(i, data_dict[i]))
     f.close()        
 
-def load_and_check_original_data(fdir, data_name, data_sha1):
-    check_train = os.path.join(fdir, data_name, 'train.txt')
-    check_test = os.path.join(fdir, data_name, 'test.txt')
-    check_valid = os.path.join(fdir, data_name, 'valid.txt')
+def load_and_check_original_data(data_dir, data_name, data_sha1):
+    _data_name = data_name
+    data_name = data_name.lower()
+    data_name = 'wn18RR' if data_name == 'wn18rr' else data_name
+    check_train = os.path.join(data_dir, data_name, 'train.txt')
+    check_test = os.path.join(data_dir, data_name, 'test.txt')
+    check_valid = os.path.join(data_dir, data_name, 'valid.txt')
 
     if not check_sha1(check_train, data_sha1['train']):
         print('The train set is error!')
@@ -267,7 +261,7 @@ def load_and_check_original_data(fdir, data_name, data_sha1):
                 'total_train': total_train,
                 'total_valid': total_valid,
                 'total_test': total_test,
-                'name': data_name}
+                'name': _data_name}
 
 def clean_data(X):
 
@@ -406,26 +400,6 @@ def str_to_idx(data):
             rel_rig[i[0]] += len(rig[i])
             tot_rig[i[0]] += 1.0
 
-        # s11=0
-        # s1n=0
-        # sn1=0
-        # snn=0
-        # for triple in test2id:
-        #     h, r, t = triple
-        #     rig_n = rel_lef[r] / tot_lef[r]
-        #     lef_n = rel_rig[r] / tot_rig[r]
-        #     if (rig_n < 1.5 and lef_n < 1.5):
-        #         s11+=1
-        #     if (rig_n >= 1.5 and lef_n < 1.5):
-        #         s1n+=1
-        #     if (rig_n < 1.5 and lef_n >= 1.5):
-        #         sn1+=1
-        #     if (rig_n >= 1.5 and lef_n >= 1.5):
-        #         snn+=1
-        # # f.close()
-        # print(s11)
-
-
         f11 = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "1-1.txt"), "w")
         f1n = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "1-n.txt"), "w")
         fn1 = open(os.path.join(os.environ.get('KG_DIR'), data['name'], "n-1.txt"), "w")
@@ -495,7 +469,7 @@ def pprint(data, total_entities, total_relations, dataName=''):
     test_len = data['total_test']
     
     filename = os.path.join(os.environ['KG_DIR'], 'statistics.txt')
-    row_data, data_names = load_table(filename) if os.path.exists(filename) else (None, [])
+    row_data, data_names = load_table(filename) if os.path.exists(filename) else (None, None)
         
     tb = pt.PrettyTable()
     tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']
@@ -503,7 +477,7 @@ def pprint(data, total_entities, total_relations, dataName=''):
         for line in row_data:
             tb.add_row(line)
     
-    if dataName not in data_names:
+    if data_names is None or dataName not in data_names:
         tb.add_row([dataName, train_len, valid_len, test_len, total_entities, total_relations])
     print(tb)
     print()

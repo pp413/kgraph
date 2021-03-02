@@ -1,14 +1,14 @@
 from setuptools import setup, find_packages
 
 setup_params = dict(name='kgraph',
-                    version='0.2.3',
+                    version='0.4.0',
                     description='A Python library for relational learning on knowledge graphs.',
                     url='https://github.com/YaoShuang-long/kgraph',
                     author='Yao Shuang-long',
                     author_email='shuanglongyao@gmail.com',
                     license='Apache 3.0',
                     platforms=['linux'],
-                    packages=find_packages(exclude=['kgraph', 'kgraph/release']),
+                    packages=find_packages(exclude=['kgraph']),
                     include_package_data=True,
                     # zip_safe=True,
                     zip_safe=False,
@@ -24,8 +24,8 @@ setup_params = dict(name='kgraph',
                         'prettytable>=0.7.2',
                         'networkx',
                         'arrow>=0.15.6'],
-                    package_dir={'release': 'kgraph/release'},
-                    package_data={'release': ['Base.so']},
+                    # package_dir={'release': 'kgraph/release'},
+                    # package_data={'release': ['Base.so']},
                     # ext_modules='release/Base.so'
                     # data_files=[('release', ['kgraph/release/Base.so'])],
                     )

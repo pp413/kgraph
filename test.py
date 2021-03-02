@@ -2,25 +2,27 @@
 # -*- coding: utf-8 -*-
 #
 # @ Author: Yao Shuang-Long
-# @ Date: 2020/12/23 10:04:22
+# @ Date: 2021/02/28 20:10:59
 # @ Summary: the summary.
 # @ Contact: xxxxxxxx@email.com
 # @ Paper Link: 
 #
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-import torch.optim as optim
 
-from kgraph.datasets import FB15k237
-from kgraph.model import Module
+from kgraph._train import initial_graph_model
+from kgraph.utils import DataIter
+from kgraph.data import FB15k237
+from kgraph.log import log_pred
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+dataset = FB15k237()
 
+data_iter = DataIter(dataset, batch_size=10000, shuffle=True, num_workers=0)
 
-class TransE(Module):
-    def __init__(self, num_ent: int, num_rel: int, embedding_dim: int, margin_value: float=0.1):
+@initial_graph_model(data_iter)
+class TransE(nn.Module):
+    def __init__(self, num_ent, num_rel, embedding_dim, margin_value=0.1):
         super(TransE, self).__init__()
         
         self.margin = margin_value
@@ -37,14 +39,7 @@ class TransE(Module):
         rel = self.rel_embeddings(data[:, 1])
         tail = self.ent_embeddings(data[:, 2])
         return head, rel, tail
-    
-    def regul(self):
-        ent_weight = torch.norm(self.ent_embeddings.weight.data, dim=-1)
-        rel_weight = torch.norm(self.rel_embeddings.weight.data, dim=-1)
-        
-        return (ent_weight.sum() + rel_weight.sum()) / 2.
-    
-    
+     
     def forward(self, lhs_pos, rhs_pos, lhs_neg, rhs_neg):
         pos_samples = torch.cat([lhs_pos, rhs_pos], dim=0)
         neg_samples = torch.cat([lhs_neg, rhs_neg], dim=0)
@@ -69,13 +64,12 @@ class TransE(Module):
         return -torch.norm(head + rel - tail, dim=-1)
 
 
-dataset = FB15k237()
-model = TransE(dataset.entity_total, dataset.relation_total, embedding_dim=100,
-               margin_value=0.1).to(device)
+model = TransE(dataset.entity_total, dataset.relation_total, 100)
 
-# model.fit(dataset, 1000, batch_size=10000, generate_negative_rate=1, lr=1e-4,
-#           weight_decay=1e-6)
+model.fit(num_epoch=600, device='cuda')
+# model.pred_train_from('./TransE/FB15k-237_2021-03-01.tgz')
+model.device = 'cuda'
 
-model.link_prediction(dataset)
-# model.link_n2n_prediction(dataset)
-# model.classification(dataset)
+table = model.link_prediction()
+log_pred(table)
+
