@@ -26,7 +26,7 @@ kgraph.data 主要解决数据的**预处理**和**加载**。在该模块可以
 
 
 ```python
-from kgraph.data import *
+from kgraph import *
 ```
 
 
@@ -41,10 +41,7 @@ from kgraph.data import *
 
 
 ```python
-data, num_ent, num_rel = load_wn18(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+data = WN18()
 ```
 
 
@@ -59,10 +56,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_wn18rr(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+data = WN18RR()
 ```
 
 
@@ -77,10 +71,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_fb15(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+data = FB15k()
 ```
 
 
@@ -95,10 +86,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_fb15k237(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+data = FB15k-237()
 ```
 
 
@@ -113,10 +101,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_yago3_10(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+
 ```
 
 
@@ -131,10 +116,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_wn11(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+
 ```
 
 
@@ -149,10 +131,7 @@ test_data = data['test']
 
 
 ```python
-data, num_ent, num_rel = load_fb13(clean_unseen=True)
-train_data = data['train']
-valid_data = data['valid']
-test_data = data['test']
+
 ```
 
 
@@ -160,57 +139,58 @@ test_data = data['test']
 ### Benchmark DataSets 基数据
 
 ```
-from kgraph.data import FB15k237, FB15k, WN18, WN18RR
+from kgraph import FB15k237, FB15k, WN18, WN18RR
 ```
 
 
 
 ## utils 模块
 
-kgraph.utils 模块主要解决数据的抽样，迭代器的生成。
+kgraph.utils 模块主要解决数据的下载。
 
 
 
 ### DataIter 数据迭代器
 
-DataIter(dataset, batch_size, batch_sampler=None, shuffle=True, neg_ratio=None, num_workers=0, use_selecting_src_rate=True, flags='train', device='cpu')
+DataIter(num_ent,
+
+​			num_rel,
+
+​			batch_size=128,
+
+​			num_threads=2,
+
+​			smooth_lambda=0.1,
+
+​			num_neg=1,
+
+​			mode=‘all’,
+
+​			bern_flag=False,
+
+​			seed=1
+
+)
 
 
 
-例子
+num_ent: 实体数量
 
-```python
-from kgraph import Sampler
-from kgraph import DataIter
-from kgraph.data import FB15k237
+num_rel: 关系数量
 
-dataset = FB15k237()
-sampler = Sampler(invalid_valid_ratio=10)
-data_iter = DataIter(dataset, batch_size=2000, batch_sampler=sampler, shuffle=True)
+batch_size: 
 
-```
+num_threads:
 
+smooth_lambda:
 
+mode: in {‘all’, ‘head’, ‘tail’, ‘head_tail’}
 
-### Sampler 抽样基类。
-
-```python
-Sampler(invalid_valid_ratio=1)
-```
-
-invalid_valid_ratio: the ratio of generating negative samples.
+ber_flag: whether to use bernoulli sampling
 
 
 
-例子
-
-```python
-from kgraph import Sampler
-
-sampler = Sampler(invalid_valid_ratio=1)
-
-lhs_pos, rhs_pos, lhs_neg, rhs_neg = sampler(batch_data, batch_size)
-```
+### Predict测试类。
 
 
 
@@ -221,135 +201,136 @@ lhs_pos, rhs_pos, lhs_neg, rhs_neg = sampler(batch_data, batch_size)
 ## Kgraph 应用
 
 
-### @initial_graph_model(data_iter)
-initial_graph_model 是一个模型的初始化魔法函数，为模型添加了基本的训练和测试函数。具体的函数如下：
-
-```python
-link_prediction(batch_size=None, for_test=True, constraint=None)
-```
-
-batch_size: the batch size of data on testing,  default: None (the number of entities).
-
-for_test: use the 'test' set. if not, use the 'valid' set.
-
-constraint: use constraint. 
-
-
-
-```python
-link_n2n_prediction(batch_size=None, constraint=None)
-```
-
-batch_size: the batch size of data on testing,  default: None (the number of entities).
-
-constraint: use constraint. 
-
-
-
-```python
-fit(num_epoch, opt='adam', lr=1e-4, weight_decay=0, scheduler_step=None, scheduler_gamme=0.75, valid_step=None, valid_function=None, device='cpu')
-```
-
-num_epoch: the number of epochs on training.
-
-opt: 
-
-lr: the learning rate.
-
-
-
-```python
-pred_train_from(path)
-```
-
-path: the save path of the model which has been pred_trained.
-
-
-
-```python
-load_checkpoint(path)
-```
-
-path: the save path of the model.
-
-
-
-```python
-save_checkpoint(path)
-```
-
-path: the path to save the model.
-
+### 
 
 
 #### 例子
 
 ```python
+import numpy as np
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.optim as optim
 
-from kgraph import initial_graph_model
-from kgraph.utils import DataIter
-from kgraph.data import FB15k237
-from kgraph.log import log_pred
+from tqdm import trange
+from kgraph import FB15k237
+from kgraph import DataIter
+from kgraph import Predict
 
-dataset = FB15k237()
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-data_iter = DataIter(dataset, batch_size=10000, shuffle=True, num_workers=0)
+def link_predict(function):
+    
+    def f(data):
+        with torch.no_grad():
+            score = function(data)
+            return -score
+    return f
 
-@initial_graph_model(data_iter)
 class TransE(nn.Module):
-    def __init__(self, num_ent, num_rel, embedding_dim, margin_value=0.1):
+    
+    def __init__(self, num_ent: int, num_rel: int, embedding_dim: int, p: int=1):
         super(TransE, self).__init__()
         
-        self.margin = margin_value
-        self.k = int(num_ent)
+        self.p = 1
         
         self.ent_embeddings = nn.Embedding(num_ent, embedding_dim)
         self.rel_embeddings = nn.Embedding(num_rel, embedding_dim)
         
-        nn.init.xavier_normal_(self.ent_embeddings.weight.data)
-        nn.init.xavier_normal_(self.rel_embeddings.weight.data)
-        
+        nn.init.xavier_uniform_(self.ent_embeddings.weight.data)
+        nn.init.xavier_uniform_(self.rel_embeddings.weight.data)
+    
     def embed_lookup(self, data):
         head = self.ent_embeddings(data[:, 0])
         rel = self.rel_embeddings(data[:, 1])
         tail = self.ent_embeddings(data[:, 2])
         return head, rel, tail
-     
-    def forward(self, lhs_pos, rhs_pos, lhs_neg, rhs_neg):
-        pos_samples = torch.cat([lhs_pos, rhs_pos], dim=0)
-        neg_samples = torch.cat([lhs_neg, rhs_neg], dim=0)
-        
-        pos_head, pos_rel, pos_tail = self.embed_lookup(pos_samples)
-        neg_head, neg_rel, neg_tail = self.embed_lookup(neg_samples)
-        
-        pos_distance = pos_head + pos_rel - pos_tail
-        neg_distance = neg_head + neg_rel - neg_tail
-        
-        pos_distance = torch.norm(pos_distance, dim=-1)
-        neg_distance = torch.norm(neg_distance, dim=-1)
-        
-        return F.relu(self.margin + pos_distance - neg_distance).sum()
     
-    def loss(self, lhs_pos, rhs_pos, lhs_neg, rhs_neg):
-        return self.forward(lhs_pos, rhs_pos, lhs_neg, rhs_neg)
-    
-    def predict(self, samples):
-        head, rel, tail = self.embed_lookup(samples)
+    def _calc(self, head, rel, tail):
+        head = F.normalize(head, 2, -1)
+        rel = F.normalize(rel, 2, -1)
+        tail = F.normalize(tail, 2, -1)
+        score = head + rel - tail
         
-        return -torch.norm(head + rel - tail, dim=-1)
+        score = torch.norm(score, p=self.p, dim=-1).flatten()
+        return score
+    
+    def regul(self):
+        ent_weight = torch.norm(self.ent_embeddings.weight, p=self.p, dim=-1)
+        rel_weight = torch.norm(self.rel_embeddings.weight, p=self.p, dim=-1)
+        return (ent_weight + rel_weight) / 2
+    
+    def forward(self, data):
+        head, rel, tail = self.embed_lookup(data)
+        score = self._calc(head, rel, tail)
+        return score
+    
+    def predict(self, data):
+        global device
+        with torch.no_grad():
+            data = torch.from_numpy(data).to(device)
+            score = self.forward(data)
+            return score.cpu().numpy()
 
+EPOCH = 1000
+BATCH_SIZE = 1000
+MARGIN = 5.
+DIM = 200
+NUM_NEG = 25
+P = 1
+LR = 1.0
 
-model = TransE(dataset.entity_total, dataset.relation_total, 100)
+data = FB15k237()
 
-model.fit(num_epoch=600, device='cuda')
-# model.pred_train_from('./TransE/FB15k-237_2021-03-01.tgz')
-model.device = 'cuda'
+def train_step(model, lr, margin):
+    opt = optim.SGD(model.parameters(), lr=lr)
+    margin = torch.nn.Parameter(torch.Tensor([margin])).cuda()
+    
+    def cal_loss(score):
+        batch_size = score.size(0) // (NUM_NEG + 1)
+        pos_score = score[:batch_size]
+        pos_score = pos_score.view(-1, batch_size).permute(1, 0)
+        
+        neg_score = score[batch_size:]
+        neg_score = neg_score.view(-1, batch_size).permute(1, 0)
+        return (torch.max(pos_score - neg_score, -margin)).mean() + margin
+    
+    def _(tmp_batch_data):
+        opt.zero_grad()
+        score = model(tmp_batch_data)
+        loss = cal_loss(score)
+        loss.backward()
+        opt.step()
+        return loss.item()
+    return _
 
-table = model.link_prediction()
-log_pred(table)
+dataiter = DataIter(data.num_ent, data.num_rel, BATCH_SIZE, 8, num_neg=NUM_NEG, bern_flag=1)
+dataiter.num_batch = 100
+predict = Predict()
+
+model = TransE(data.num_ent, data.num_rel, DIM, P).to(device)
+
+training = train_step(model, lr=LR, margin=MARGIN)
+
+for i in trange(1, EPOCH+1):
+    avg_loss = 0.0
+    for batch_data, batch_label in dataiter.generate_triple_with_negative_on_random():
+
+        batch_data = torch.from_numpy(batch_data).to(device)
+        l = training(batch_data)
+        avg_loss += l
+    
+    if i % 50 == 0:
+        print('Epoch', i, 'Loss', avg_loss)
+        rank = predict.predict_valid(model.predict, data.num_ent, data.num_rel, 10 * BATCH_SIZE)
+        rank = np.append(rank[1], rank[-1])
+        print(f"MR: {np.mean(rank)}, MRR: {np.mean(1.0 / rank)}, Hits@10: {np.sum(rank <= 10)/len(rank)}\n")
+
+rank = predict.predict_test(model.predict, data.num_ent, data.num_rel, 10 * BATCH_SIZE)
+rank = np.append(rank[1], rank[-1])
+print(f"MR: {np.mean(rank)}, MRR: {np.mean(1.0 / rank)}, Hits@10: {np.sum(rank <= 10)/len(rank)}\n") 
 
 ```
 
