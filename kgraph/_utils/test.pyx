@@ -150,7 +150,7 @@ def calculate_ranks_on_valid_via_triple(function, num_ent: int, num_rel: int, ba
     memset(lhs_ranks, -1, valid_data.data_size * sizeof(float))
     memset(lhs_franks, -1, valid_data.data_size * sizeof(float))
 
-    t_kwargs = dict(desc="Test Evaluating:", unit="pair", ncols=80, initial=1, total=lef_num + rig_num)
+    t_kwargs = dict(desc="Valid Evaluating:", unit="pair", ncols=80, initial=1, total=lef_num + rig_num)
     tmp_i = 0
     tmp_j = 0
     n = num_ent // batch_size if num_ent % batch_size == 0 else num_ent // batch_size + 1
@@ -556,7 +556,7 @@ def calculate_ranks_on_test_via_pair(function, num_ent: int, num_rel: int, batch
                                                                 all_triples.pair_rig_tail,
                                                                 data.pair_head_idx[i-lef_num-batch_size+k].ent,
                                                                 data.pair_head_idx[i-lef_num-batch_size+k].rel)
-                            cal_tail_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 1)
+                            cal_head_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 1)
                             tmp_j += rig_i - lef_i + 1
                 
                 if m + lef_num < i <= lef_num + rig_num:
@@ -574,7 +574,7 @@ def calculate_ranks_on_test_via_pair(function, num_ent: int, num_rel: int, batch
                                                                 all_triples.pair_rig_tail,
                                                                 data.pair_head_idx[i-lef_num-(rig_num - m)+k].ent,
                                                                 data.pair_head_idx[i-lef_num-(rig_num - m)+k].rel)
-                            cal_tail_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 1)
+                            cal_head_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 1)
                             tmp_j += rig_i - lef_i + 1
     
     except KeyboardInterrupt:
@@ -614,7 +614,7 @@ def calculate_ranks_on_valid_via_pair(function, num_ent: int, num_rel: int, batc
     memset(lhs_ranks, -1, data_size * sizeof(float))
     memset(lhs_franks, -1, data_size * sizeof(float))
 
-    t_kwargs = dict(desc="Test Evaluating:", unit="pair", ncols=80, initial=1, total=lef_num + rig_num)
+    t_kwargs = dict(desc="Valid Evaluating:", unit="pair", ncols=80, initial=1, total=lef_num + rig_num)
 
     n = lef_num - (lef_num % batch_size)
     m = rig_num - (rig_num % batch_size)
@@ -675,7 +675,7 @@ def calculate_ranks_on_valid_via_pair(function, num_ent: int, num_rel: int, batc
                                                                 train_data.pair_rig_tail,
                                                                 data.pair_head_idx[i-lef_num-batch_size+k].ent,
                                                                 data.pair_head_idx[i-lef_num-batch_size+k].rel)
-                            cal_tail_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 0)
+                            cal_head_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 0)
                             tmp_j += rig_i - lef_i + 1
                 
                 if m + lef_num < i <= lef_num + rig_num:
@@ -693,7 +693,7 @@ def calculate_ranks_on_valid_via_pair(function, num_ent: int, num_rel: int, batc
                                                                 train_data.pair_rig_tail,
                                                                 data.pair_head_idx[i-lef_num-(rig_num - m)+k].ent,
                                                                 data.pair_head_idx[i-lef_num-(rig_num - m)+k].rel)
-                            cal_tail_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 0)
+                            cal_head_rank_c(0, num_ent, &tmp_j, lhs_ranks, lhs_franks, targets, targets_tmp, lef_i, rig_i, filter_lef_i, filter_rig_i, data.data_tail, score_tmp, 0)
                             tmp_j += rig_i - lef_i + 1
     
     except KeyboardInterrupt:

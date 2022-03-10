@@ -66,8 +66,8 @@ class DataIter(Sample):
             seed: random seed
         '''
         
-        assert mode in ['all', 'head', 'tail', 'head_tail'], 'mode must be one of "all", "head", "tail", "head_tail"'
-        modes = {'all': 0, 'head': -1, 'tail': 1, 'head_tail': 0}
+        assert mode in ['all', 'head', 'tail', 'head_tail', 'normal', 'cross'], 'mode must be one of "all", "head", "tail", "head_tail"'
+        modes = {'all': 0, 'head': -1, 'tail': 1, 'head_tail': 0, 'normal': 0, 'cross': 2}
         
         super(DataIter, self).__init__(num_ent, num_rel, batch_size, num_threads, smooth_lambda,
                                          num_neg, modes[mode], int(bern_flag), seed)

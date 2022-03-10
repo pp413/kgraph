@@ -26,6 +26,7 @@ ctypedef struct Kwargs:
     float smooth_lambda
     int *TID
     int num_per_thread
+    int normal_or_cross
 
 cdef void shuffle(int *ptr, int length):
     cdef int tmp
@@ -48,6 +49,7 @@ cdef void initializeKwargs(Kwargs *kwargs):
     kwargs.smooth_lambda = 0.0
     kwargs.TID = NULL
     kwargs.num_per_thread = 0
+    kwargs.normal_or_cross = 0
 
 @boundscheck(False)
 @wraparound(False)
@@ -69,7 +71,7 @@ cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float
             for j in range(1, kwargs.negative_sample_size + 1):
                 tmp = i + j * kwargs.batch_size
                 batch_labels[tmp, 0] = 0.
-                if kwargs.mode == 0:
+                if kwargs.mode == 0 and kwargs.normal_or_cross == 0:
                     if kwargs.bern_flag:
                         p = (train_data.rig_mean[batch_data[i, 1]] + train_data.lef_mean[batch_data[i, 1]])
                         prob = 1000. * train_data.rig_mean[batch_data[i, 1]]
@@ -88,6 +90,8 @@ cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[i, 0] = 1.
                 else:
+                    if kwargs.normal_or_cross == 1:
+                        kwargs.mode = 0 - kwargs.mode
                     if kwargs.mode == -1:
                         batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
                         batch_data[tmp, 1] = batch_data[i, 1]
@@ -129,7 +133,7 @@ cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] b
             batch_labels[i, 0] = 0.
             for j in range(1, kwargs.negative_sample_size + 1):
                 tmp = i + j * kwargs.batch_size
-                if kwargs.mode == 0:
+                if kwargs.mode == 0 and kwargs.normal_or_cross == 0:
                     if kwargs.bern_flag:
                         p = (train_data.rig_mean[batch_data[i, 1]] + train_data.lef_mean[batch_data[i, 1]])
                         prob = 1000. * train_data.rig_mean[batch_data[i, 1]]
@@ -147,6 +151,8 @@ cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] b
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[i, 0] = 1.
                 else:
+                    if kwargs.normal_or_cross == 1:
+                        kwargs.mode = 0 - kwargs.mode
                     if kwargs.mode == -1:
                         batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
                         batch_data[tmp, 1] = batch_data[i, 1]
@@ -261,7 +267,6 @@ cdef class Sample:
         self.kwargs.smooth_lambda = smooth_lambda
         self.kwargs.ent_num = ent_num
         self.kwargs.rel_num = rel_num
-        self.kwargs.mode = mode
         self.kwargs.negative_sample_size = negative_rate
         self.kwargs.bern_flag = bern_flag
 
@@ -269,6 +274,13 @@ cdef class Sample:
         self._training = False
         self._residue = 0
         self._j = batch_size
+
+        if mode < 2:
+            self.kwargs.mode = mode
+            self.kwargs.normal_or_cross = 0
+        else:
+            self.kwargs.mode = 1
+            self.kwargs.normal_or_cross = 1
 
         # printf('thread: %d\n', self.kwargs.num_threads)
     

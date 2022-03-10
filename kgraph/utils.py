@@ -66,10 +66,9 @@ def load_data(url, path, sep='\t', no_sort=True):
     if not os.path.exists(os.path.join(path)):
         os.makedirs(os.path.join(path))
 
-    if not os.path.exists(os.path.join(path, data_zip_name)):
-        download_data(url, os.path.join(path, data_zip_name))
-
     if not os.path.exists(os.path.join(path, data_zip_name.split('.')[0])):
+        if not os.path.exists(os.path.join(path, data_zip_name)):
+            download_data(url, os.path.join(path, data_zip_name))
         unzip(os.path.join(path, data_zip_name), os.path.join(path))
     if not os.path.exists(os.path.join(path, data_zip_name.split('.')[0], 'train2id.txt')):
         generateTripleIdFile(os.path.join(path, data_zip_name.split('.')[0]),
