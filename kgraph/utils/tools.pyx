@@ -207,10 +207,9 @@ def generateN2N(
     f1n = open(os.path.join(save_path, "1-n.txt"), "w")
     fn1 = open(os.path.join(save_path, "n-1.txt"), "w")
     fnn = open(os.path.join(save_path, "n-n.txt"), "w")
-    j = 0
     for triple in test_array:
         h, r, t = triple
-        content = f'{h}\t{r}\t{t}\t{j}\n'
+        content = f'{h}\t{r}\t{t}\n'
         rig_n = rel_lef[r] / tot_lef[r]
         lef_n = rel_rig[r] / tot_rig[r]
         if (rig_n < 1.5 and lef_n < 1.5):
@@ -225,7 +224,6 @@ def generateN2N(
         if (rig_n >= 1.5 and lef_n >= 1.5):
             fnn.write(content)
             # fall.write("3"+"\t"+content)
-        j += 1
     # fall.close()
     f11.close()
     f1n.close()
