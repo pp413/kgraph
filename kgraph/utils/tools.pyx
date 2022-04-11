@@ -6,7 +6,7 @@ cimport numpy as np
 from collections import Counter
 
 
-def get_str2id(path_data, sep="\t"):
+def get_str2id(path_data, sep="\t", no_sort=True):
     relation2id = dict()
     id2relation = dict()
     entity2id = dict()
@@ -14,11 +14,13 @@ def get_str2id(path_data, sep="\t"):
     entity_num = 0
     relation_num = 0
 
-    for f in ["relation2id.txt", "entity2id.txt"]:
+    element2id = ["relation2id_no_sort.txt", "entity2id_no_sort.txt"] if no_sort else ["relation2id_on_sort.txt", "entity2id_on_sort.txt"]
+
+    for f in element2id:
         with open(os.path.join(path_data, f), "r") as f:
             for l in f.readlines():
                 line = l.strip().split(sep)
-                if f == "relation2id.txt":
+                if f == "relation2id_no_sort.txt" or f == "relation2id_on_sort.txt":
                     if len(line) == 1:
                         relation_num = int(line[0])
                         continue
@@ -63,10 +65,13 @@ def write_triple_from_original_data(original_data, path_file, str2id, sep='\t'):
 def generateTripleIdFile(from_original_data_dir, to_dir, sep='\t', no_sort=True):
     orignal_triple_files = ['train.txt', 'valid.txt', 'test.txt']
     to_id_files = [os.path.join(to_dir, x) for x in ['train2id.txt', 'valid2id.txt', 'test2id.txt']]
+
+    entity2id_file_name = 'entity2id_no_sort.txt' if no_sort else 'entity2id_on_sort.txt'
+    relation2id_file_name = 'relation2id_no_sort.txt' if no_sort else 'relation2id_on_sort.txt'
     
-    if os.path.exists(os.path.join(from_original_data_dir, 'entity2id.txt')):
+    if os.path.exists(os.path.join(from_original_data_dir, entity2id_file_name)):
         (ent2id, _), (rel2id, _), (entTotal, relTotal) = get_str2id(
-            from_original_data_dir, sep=sep)
+            from_original_data_dir, sep=sep, no_sort=no_sort)
     else:
         data = []
         for file_name in orignal_triple_files:
@@ -118,8 +123,8 @@ def generateTripleIdFile(from_original_data_dir, to_dir, sep='\t', no_sort=True)
             rel2id = {rel[0]: value_ for value_, rel in enumerate(sorted(relations, key=lambda x: x[1], reverse=True))}
         entTotal = len(entities)
         relTotal = len(relations)
-        write_str2id(ent2id, os.path.join(from_original_data_dir, 'entity2id.txt'))
-        write_str2id(rel2id, os.path.join(from_original_data_dir, 'relation2id.txt'))
+        write_str2id(ent2id, os.path.join(from_original_data_dir, entity2id_file_name))
+        write_str2id(rel2id, os.path.join(from_original_data_dir, relation2id_file_name))
         del data, entities, relations
 
     for i, file_name in enumerate(orignal_triple_files):

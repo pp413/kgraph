@@ -19,7 +19,7 @@ cdef np.ndarray[np.int64_t, ndim=2] loadTripleIdFile_c(char* path):
         exit(EXIT_FAILURE)
     
     tmp = fscanf(fin, '%d', &num)
-    printf("the total of triples is %d \n", num)
+    # printf("the total of triples is %d \n", num)
     cdef np.ndarray[np.int64_t, ndim=2] data = np.empty((num, 3), dtype=np.int64)
     cdef long[:, ::1] d = data
     
@@ -458,7 +458,7 @@ cdef class DataSet:
         int num_ent
         int num_rel
 
-    def __init__(self, const unsigned char[:] root_path):
+    def __init__(self, const unsigned char[:] root_path, int no_sort):
         global train_data
         global valid_data
         global test_data
@@ -468,13 +468,20 @@ cdef class DataSet:
         cdef char* train2id_path = generate_path_c(root_path, b"train2id.txt")
         cdef char* valid2id_path = generate_path_c(root_path, b"valid2id.txt")
         cdef char* test2id_path = generate_path_c(root_path, b"test2id.txt")
-        cdef char* entity2id_path = generate_path_c(root_path, b"entity2id.txt")
-        cdef char* relation2id_path = generate_path_c(root_path, b"relation2id.txt")
-
+        
         cdef:
+            char* entity2id_path
+            char* relation2id_path
             long[:, ::1] train_data_array = loadTripleIdFile_c(train2id_path)
             long[:, ::1] valid_data_array = loadTripleIdFile_c(valid2id_path)
             long[:, ::1] test_data_array = loadTripleIdFile_c(test2id_path)
+        
+        if no_sort > 0:
+            entity2id_path = generate_path_c(root_path, b"entity2id_no_sort.txt")
+            relation2id_path = generate_path_c(root_path, b"relation2id_no_sort.txt")
+        else:
+            entity2id_path = generate_path_c(root_path, b"entity2id_on_sort.txt")
+            relation2id_path = generate_path_c(root_path, b"relation2id_on_sort.txt")
         self.num_ent = getTotal_c(entity2id_path)
         self.num_rel = getTotal_c(relation2id_path)
 
@@ -514,4 +521,20 @@ cdef class DataSet:
             return self.getTrain()
         
         def __set__(self, long[:, ::1] value):
-            putTrainInCache_c(value, self.num_ent, self.num_rel)
+            # putTrainInCache_c(value, self.num_ent, self.num_rel)
+            putAllInCache_c(value, self.getValid(), self.getTest(), self.num_ent, self.num_rel)
+    
+    property valid:
+        def __get__(self):
+            return self.getValid()
+        
+        def __set__(self, long[:, ::1] value):
+            putAllInCache_c(self.getTrain(), value, self.getTest(), self.num_ent, self.num_rel)
+    
+    property test:
+        def __get__(self):
+            return self.getTest()
+        
+        def __set__(self, long[:, ::1] value):
+            putAllInCache_c(self.getTrain(), self.getValid(), value, self.num_ent, self.num_rel)
+

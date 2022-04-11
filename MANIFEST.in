@@ -1,1 +1,4 @@
-recursive-include src *
+recursive-include kgraph *.pyx *.pyx *.pyi
+include LICENSE
+include README.md
+
