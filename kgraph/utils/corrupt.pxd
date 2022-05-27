@@ -1,19 +1,20 @@
 # cython: language_level = 3
 # distutils: language = c++
-from .cache_data cimport Pair, Triple, Data
-from .cache_data cimport Constrain
+
+from .memory cimport rand64, rand_max
+from .memory cimport Pair, Triple, DataStruct
+from .memory cimport Constrain
+
 from .read cimport train_data
-from .random_int64 cimport rand_max
-from .random_int64 cimport rand64
 
-cdef (int, int) find_target_id(Pair *ptr, int *pair_lef, int *pair_rig, long ent, long rel) nogil
+cdef (int, int) find_target_id(Pair *ptr, int *pair_lef, int *pair_rig, int ent, int rel) nogil
 
-cdef long corrupt_tail_c(int tId, long head, long rel, int entityTotal) nogil
+cdef int corrupt_tail_c(int tId, int head, int rel, int entityTotal) nogil
 
-cdef long corrupt_head_c(int tId, long tail, long rel, int entityTotal) nogil
+cdef int corrupt_head_c(int tId, int tail, int rel, int entityTotal) nogil
 
-cdef bint find(Data *ptr, long head, long rel, long tail) nogil
+cdef bint find(DataStruct *ptr, int head, int rel, int tail) nogil
 
-cdef long corrupt_head_with_constrain(int tId, Data *ptr, Constrain *constrain, long head, long rel, int entityTotal) nogil
+cdef int corrupt_head_with_constrain(int tId, DataStruct *ptr, Constrain *constrain, int head, int rel, int entityTotal) nogil
 
-cdef long corrupt_tail_with_constrain(int tId, Data *ptr, Constrain *constrain, long tail, long rel, int entityTotal) nogil
+cdef int corrupt_tail_with_constrain(int tId, DataStruct *ptr, Constrain *constrain, int tail, int rel, int entityTotal) nogil

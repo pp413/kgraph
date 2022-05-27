@@ -1,7 +1,7 @@
 # cython: language_level = 3
 # distutils: language = c++
 
-cdef (int, int) find_target_id(Pair *ptr, int *pair_lef, int *pair_rig, long ent, long rel) nogil:
+cdef (int, int) find_target_id(Pair *ptr, int *pair_lef, int *pair_rig, int ent, int rel) nogil:
     cdef:
         int i, j, k
         int ent_id = <int>ent
@@ -26,13 +26,13 @@ cdef (int, int) find_target_id(Pair *ptr, int *pair_lef, int *pair_rig, long ent
 
     return ptr[i].lef_id, ptr[i].rig_id
 
-cdef long corrupt_tail_c(int tId, long head, long rel, int entityTotal) nogil:
+cdef int corrupt_tail_c(int tId, int head, int rel, int entityTotal) nogil:
     cdef:
         int lef, rig, mid, ll, rr
-        long tmp
+        int tmp
     
     lef, rig = find_target_id(train_data.pair_tail_idx, train_data.pair_lef_head, train_data.pair_rig_head, head, rel)
-    tmp = rand_max(tId, entityTotal - (rig - lef + 1))
+    tmp = <int>rand_max(tId, <long>(entityTotal - (rig - lef + 1)))
 
     if tmp < train_data.data_head[lef].tail:
         return tmp
@@ -56,13 +56,13 @@ cdef long corrupt_tail_c(int tId, long head, long rel, int entityTotal) nogil:
 
         return tmp + ll - lef
 
-cdef long corrupt_head_c(int tId, long tail, long rel, int entityTotal) nogil:
+cdef int corrupt_head_c(int tId, int tail, int rel, int entityTotal) nogil:
     cdef:
         int lef, rig, mid, ll, rr
-        long tmp
+        int tmp
     
     lef, rig = find_target_id(train_data.pair_head_idx, train_data.pair_lef_tail, train_data.pair_rig_tail, tail, rel)
-    tmp = rand_max(tId, entityTotal - (rig - lef + 1))
+    tmp = <int>rand_max(tId, <long>(entityTotal - (rig - lef + 1)))
 
     if tmp < train_data.data_tail[lef].head:
 
@@ -87,7 +87,7 @@ cdef long corrupt_head_c(int tId, long tail, long rel, int entityTotal) nogil:
     else:
         return tmp + ll - lef
 
-cdef bint find(Data *ptr, long head, long rel, long tail) nogil:
+cdef bint find(DataStruct *ptr, int head, int rel, int tail) nogil:
     cdef int l, r, mid
     l = 0
     r = ptr.data_size
@@ -107,12 +107,12 @@ cdef bint find(Data *ptr, long head, long rel, long tail) nogil:
         return 0
 
 
-cdef long corrupt_head_with_constrain(int tId, Data *ptr, Constrain *constrain, long head, long rel, int entityTotal) nogil:
+cdef int corrupt_head_with_constrain(int tId, DataStruct *ptr, Constrain *constrain, int head, int rel, int entityTotal) nogil:
     cdef int loop
-    cdef long tail
+    cdef int tail
     loop = 0
     while True:
-        tail = rand64(constrain.left_id_of_tails_of_relation[rel], constrain.right_id_of_tails_of_relation[rel]+1)
+        tail = <int>rand64(<long>constrain.left_id_of_tails_of_relation[rel], <long>(constrain.right_id_of_tails_of_relation[rel]+1))
         if not find(ptr, head, rel, tail):
             return tail
         else:
@@ -120,12 +120,12 @@ cdef long corrupt_head_with_constrain(int tId, Data *ptr, Constrain *constrain, 
             if loop > 1000:
                 return corrupt_tail_c(tId, head, rel, entityTotal)
 
-cdef long corrupt_tail_with_constrain(int tId, Data *ptr, Constrain *constrain, long tail, long rel, int entityTotal) nogil:
+cdef int corrupt_tail_with_constrain(int tId, DataStruct *ptr, Constrain *constrain, int tail, int rel, int entityTotal) nogil:
     cdef int loop
-    cdef long head
+    cdef int head
     loop = 0
     while True:
-        head = rand64(constrain.left_id_of_heads_of_relation[rel], constrain.right_id_of_heads_of_relation[rel]+1)
+        head = <int>rand64(<long>constrain.left_id_of_heads_of_relation[rel], <long>(constrain.right_id_of_heads_of_relation[rel]+1))
         if not find(ptr, head, rel, tail):
             return head
         else:

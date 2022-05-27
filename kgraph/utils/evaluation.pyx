@@ -6,13 +6,14 @@ from tqdm import tqdm, trange
 cimport numpy as np
 from libc.stdio cimport printf
 from libc.stdlib cimport malloc, free
-from .mem cimport Pool
 from libc.string cimport memset
 from cython cimport long, int, float, sizeof
-from libcpp.algorithm cimport sort
+# from libcpp.algorithm cimport sort
 
-from .cache_data cimport global_mem
-from .cache_data cimport Triple, Data
+from .memory cimport MemoryPool
+from .memory cimport Triple, DataStruct
+from .memory cimport IndexedElement
+from .memory cimport _compare, qsort
 
 from .read cimport valid_data
 from .read cimport test_data
@@ -22,14 +23,33 @@ from .corrupt cimport find_target_id
 
 np.import_array()
 
+
+# cdef extern from "stdlib.h":
+#     ctypedef void const_void "const void"
+#     void qsort(void *base, int nmemb, int size, int(*compar)(const_void *, const_void *)) nogil
+
 cdef void argsort(int* index, float[::1] array) except *:
+    '''花费时间更加低'''
     cdef:
         int tmp_i
         int length = array.shape[0]
-        long[::1] index_array = np.asarray(array).argsort()
+        long long[::1] index_array = np.asarray(array).argsort()
     
     for tmp_i in range(length):
-        index[tmp_i] = <int>index_array[tmp_i] 
+        index[tmp_i] = <int>index_array[tmp_i]
+
+
+# cdef void argsort(int* index, float[::1] array) except *:
+#     cdef int i
+#     cdef int n = array.shape[0]
+#     cdef IndexedElement *order_struct = <IndexedElement *> malloc(n * sizeof(IndexedElement))
+#     for i in range(n):
+#         order_struct[i].index = i
+#         order_struct[i].value = array[i]
+#     qsort(<void *> order_struct, n, sizeof(IndexedElement), _compare)
+#     for i in range(n):
+#         index[i] = order_struct[i].index
+#     free(order_struct)
 
 
 def calculate_ranks_on_valid_via_triple(function, num_ent: int, num_rel: int, batch_size: int):
@@ -40,7 +60,7 @@ def calculate_ranks_on_valid_via_triple(function, num_ent: int, num_rel: int, ba
         int lef_num = valid_data.lef_pair_num
         int rig_num = valid_data.rig_pair_num
 
-        Pool lmem = Pool()
+        MemoryPool lmem = MemoryPool()
         long *_triple = <long*>lmem.alloc(3 * num_ent, sizeof(long))
         long[:, ::1] triple = <long[:num_ent, :3]>_triple
         float *_scores = <float*>lmem.alloc(num_ent, sizeof(float))
@@ -139,7 +159,7 @@ def calculate_ranks_on_test_via_triple(function, num_ent: int, num_rel: int, bat
         int lef_num = test_data.lef_pair_num
         int rig_num = test_data.rig_pair_num
 
-        Pool lmem = Pool()
+        MemoryPool lmem = MemoryPool()
         long *_triple = <long*>lmem.alloc(3 * num_ent, sizeof(long))
         long[:, ::1] triple = <long[:num_ent, :3]>_triple
         float *_scores = <float*>lmem.alloc(num_ent, sizeof(float))
@@ -256,13 +276,13 @@ cdef void cal_head_rank_c(int index, int num_ent, int *idx, float *ranks, float 
         int i, j, k
         int num = rig_i - lef_i + 1
 
-        Pool mem = Pool()
+        MemoryPool mem = MemoryPool()
         float *rank = <float*>mem.alloc(num, sizeof(float))
         float *frank = <float*>mem.alloc(num, sizeof(float))
         long *predict_targets = <long*>mem.alloc(rig_i - lef_i + 1, sizeof(long))
         long *filter_targets = <long*>mem.alloc(filter_rig_i - filter_lef_i + 1, sizeof(long))
         int *_idx = <int*>mem.alloc(num_ent, sizeof(int))
-        Data *filter_data = &all_triples if flags else &train_data
+        DataStruct *filter_data = &all_triples if flags else &train_data
     
     memset(targets, 0, num_ent * sizeof(long))
     memset(tmp, 0, num_ent * sizeof(long))
@@ -302,29 +322,19 @@ cdef void cal_head_rank_c(int index, int num_ent, int *idx, float *ranks, float 
 
 
 cdef void cal_tail_rank_c(int index, int num_ent, int *idx, float *ranks, float *franks, long* targets, long* tmp, int lef_i, int rig_i, int filter_lef_i, int filter_rig_i, Triple *ptr, float[::1] scores, bint flags) except *:
-    # cdef int tmp_idx, target_num
-
-    #target_num = filter_rig_i - filter_lef_i + 1
-    #if target_num <= 0:
-        #target_num = rig_i - lef_i + 1
-        #for tmp_idx in range(rig_i - lef_i +1):
-            #ranks[idx[0]+tmp_idx] = 0
-            #franks[idx[0]+tmp_idx] = 0
-        #printf("%d, %d, %d, %d\n", index, filter_rig_i, filter_lef_i, target_num)
-        #return
 
     cdef:
         int start = idx[0]
         int i, j, k
         int num = rig_i - lef_i + 1
 
-        Pool mem = Pool()
+        MemoryPool mem = MemoryPool()
         float *rank = <float*>mem.alloc(num, sizeof(float))
         float *frank = <float*>mem.alloc(num, sizeof(float))
         long *predict_targets = <long*>mem.alloc(num, sizeof(long))
         long *filter_targets = <long*>mem.alloc(filter_rig_i - filter_lef_i + 1, sizeof(long))
         int *_idx = <int*>mem.alloc(num_ent, sizeof(int))
-        Data *filter_data = &all_triples if flags else &train_data
+        DataStruct *filter_data = &all_triples if flags else &train_data
 
     memset(targets, 0, num_ent * sizeof(long))
     memset(tmp, 0, num_ent * sizeof(long))
@@ -384,8 +394,8 @@ def calculate_ranks_on_test_via_pair(function, num_ent: int, num_rel: int, batch
         int rig_num = test_data.rig_pair_num
         int data_size = test_data.data_size
 
-        Data *data = &test_data
-        Pool lmem = Pool()
+        DataStruct *data = &test_data
+        MemoryPool lmem = MemoryPool()
 
         float *rhs_ranks = <float*>lmem.alloc(data_size, sizeof(float))
         float *rhs_franks = <float*>lmem.alloc(data_size, sizeof(float))
@@ -503,8 +513,8 @@ def calculate_ranks_on_valid_via_pair(function, num_ent: int, num_rel: int, batc
         int rig_num = valid_data.rig_pair_num
         int data_size = valid_data.data_size
 
-        Data *data = &valid_data
-        Pool lmem = Pool()
+        DataStruct *data = &valid_data
+        MemoryPool lmem = MemoryPool()
 
         float *rhs_ranks = <float*>lmem.alloc(data_size, sizeof(float))
         float *rhs_franks = <float*>lmem.alloc(data_size, sizeof(float))

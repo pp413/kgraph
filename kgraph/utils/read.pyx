@@ -1,6 +1,8 @@
 # cython: language_level = 3
 # distutils: language=c++
 import numpy as np
+cimport numpy as np
+from cpython cimport array
 from cython cimport boundscheck, wraparound, cdivision
 
 # #######################################################################################
@@ -8,10 +10,10 @@ from cython cimport boundscheck, wraparound, cdivision
 @cdivision(True)
 @boundscheck(False)
 @wraparound(False)
-cdef np.ndarray[np.int64_t, ndim=2] loadTripleIdFile_c(char* path):
+cdef long[:, ::1] loadTripleIdFile_c(char* path):
     cdef:
         int i, num, tmp
-        long n
+        int n
         FILE *fin
 
     fin = fopen(path, 'r')
@@ -19,13 +21,11 @@ cdef np.ndarray[np.int64_t, ndim=2] loadTripleIdFile_c(char* path):
         exit(EXIT_FAILURE)
     
     tmp = fscanf(fin, '%d', &num)
-    # printf("the total of triples is %d \n", num)
-    cdef np.ndarray[np.int64_t, ndim=2] data = np.empty((num, 3), dtype=np.int64)
-    cdef long[:, ::1] d = data
+    cdef long * ptr = <long *> global_memory_pool.alloc(3 * num, sizeof(long))
     
     for i in range(num):
-        tmp = fscanf(fin, '%ld%ld%ld', &d[i, 0], &d[i, 1], &d[i, 2])
-    return data
+        tmp = fscanf(fin, '%ld%ld%ld', &ptr[3 * i], &ptr[3 * i + 1], &ptr[3 * i + 2])
+    return <long[:num, :3]>ptr
 
 cdef int getTotal_c(char* path):
     cdef:
@@ -93,8 +93,8 @@ cdef (int*, int*, int*, int*, Pair*, Pair*, int*, int*, int*, int*, int, int) _g
                     rt_j += 1
     
     cdef:
-        Pair *pair_tail_idx = <Pair*>global_mem.alloc(1, sizeof(Pair))
-        Pair *pair_head_idx = <Pair*>global_mem.alloc(1, sizeof(Pair))
+        Pair *pair_tail_idx = <Pair*>global_memory_pool.alloc(1, sizeof(Pair))
+        Pair *pair_head_idx = <Pair*>global_memory_pool.alloc(1, sizeof(Pair))
         
     set_pair_ptr(&pair_tail_idx, hr_j)
     set_pair_ptr(&pair_head_idx, rt_j)
@@ -131,10 +131,10 @@ cdef (int*, int*, int*, int*, Pair*, Pair*, int*, int*, int*, int*, int, int) _g
             pair_head_idx[rt_j - 1].rig_id = rigTail_data[i]
     
     cdef:
-        int *pair_lef_head = <int*>global_mem.alloc(1, sizeof(int))
-        int *pair_rig_head = <int*>global_mem.alloc(1, sizeof(int))
-        int *pair_lef_tail = <int*>global_mem.alloc(1, sizeof(int))
-        int *pair_rig_tail = <int*>global_mem.alloc(1, sizeof(int))
+        int *pair_lef_head = <int*>global_memory_pool.alloc(1, sizeof(int))
+        int *pair_rig_head = <int*>global_memory_pool.alloc(1, sizeof(int))
+        int *pair_lef_tail = <int*>global_memory_pool.alloc(1, sizeof(int))
+        int *pair_rig_tail = <int*>global_memory_pool.alloc(1, sizeof(int))
     set_int_ptr(&pair_lef_head, num_ent, -1)
     set_int_ptr(&pair_rig_head, num_ent, -1)
     set_int_ptr(&pair_lef_tail, num_ent, -1)
@@ -164,11 +164,11 @@ cdef void putTrainInCache_c(long[:, ::1] data_array, int entityTotal, int relati
 
     cdef:
         int i, j, n
-        Pool mem = Pool()
-        long *_headList = <long*>mem.alloc(entityTotal, sizeof(long))
-        long *_tailList = <long*>mem.alloc(entityTotal, sizeof(long))
-    memset(_headList, -1, sizeof(long) * entityTotal)
-    memset(_tailList, -1, sizeof(long) * entityTotal)
+        MemoryPool mem = MemoryPool()
+        int *_headList = <int*>mem.alloc(entityTotal, sizeof(int))
+        int *_tailList = <int*>mem.alloc(entityTotal, sizeof(int))
+    memset(_headList, -1, sizeof(int) * entityTotal)
+    memset(_tailList, -1, sizeof(int) * entityTotal)
 
     train_data.data_size = num
 
@@ -214,8 +214,8 @@ cdef void putTrainInCache_c(long[:, ::1] data_array, int entityTotal, int relati
                 _headList[train_data.data_head[i].head] = train_data.data_head[i].head
                 train_data.ent_total_data.lef_num += 1
     
-    train_data.headList = <long*>global_mem.alloc(train_data.ent_total_data.lef_num, sizeof(long))
-    train_data.tailList = <long*>global_mem.alloc(train_data.ent_total_data.rig_num, sizeof(long))
+    train_data.headList = <int*>global_memory_pool.alloc(train_data.ent_total_data.lef_num, sizeof(int))
+    train_data.tailList = <int*>global_memory_pool.alloc(train_data.ent_total_data.rig_num, sizeof(int))
 
     j = 0
     n = 0
@@ -251,7 +251,7 @@ cdef void putTrainInCache_c(long[:, ::1] data_array, int entityTotal, int relati
         if train_data.rig_mean[i] > 0.:
             train_data.rig_mean[i] = train_data.freqRel[i] / train_data.rig_mean[i]
 
-cdef void _putTestInCache(Data *_test_data, long[:, ::1] data, int entityTotal, int relationTotal):
+cdef void _putTestInCache(DataStruct *_test_data, long[:, ::1] data, int entityTotal, int relationTotal):
     cdef int num = data.shape[0]
     _test_data.data_size = num
 
@@ -294,22 +294,22 @@ cdef void putAllInCache_c(long[:, ::1] train_data_array, long[:, ::1] valid_data
     set_triple_ptr(&all_triples.data_tail, train_num + valid_num)
 
     for i in range(train_num):
-        all_triples.data_head[i].head = train_data_array[i, 0]
-        all_triples.data_head[i].rel = train_data_array[i, 1]
-        all_triples.data_head[i].tail = train_data_array[i, 2]
+        all_triples.data_head[i].head = <int>train_data_array[i, 0]
+        all_triples.data_head[i].rel = <int>train_data_array[i, 1]
+        all_triples.data_head[i].tail = <int>train_data_array[i, 2]
 
-        all_triples.data_tail[i].head = train_data_array[i, 0]
-        all_triples.data_tail[i].rel = train_data_array[i, 1]
-        all_triples.data_tail[i].tail = train_data_array[i, 2]
+        all_triples.data_tail[i].head = <int>train_data_array[i, 0]
+        all_triples.data_tail[i].rel = <int>train_data_array[i, 1]
+        all_triples.data_tail[i].tail = <int>train_data_array[i, 2]
     
     for i in range(valid_num):
-        all_triples.data_head[i + train_num].head = valid_data_array[i, 0]
-        all_triples.data_head[i + train_num].rel = valid_data_array[i, 1]
-        all_triples.data_head[i + train_num].tail = valid_data_array[i, 2]
+        all_triples.data_head[i + train_num].head = <int>valid_data_array[i, 0]
+        all_triples.data_head[i + train_num].rel = <int>valid_data_array[i, 1]
+        all_triples.data_head[i + train_num].tail = <int>valid_data_array[i, 2]
 
-        all_triples.data_tail[i + train_num].head = valid_data_array[i, 0]
-        all_triples.data_tail[i + train_num].rel = valid_data_array[i, 1]
-        all_triples.data_tail[i + train_num].tail = valid_data_array[i, 2]
+        all_triples.data_tail[i + train_num].head = <int>valid_data_array[i, 0]
+        all_triples.data_tail[i + train_num].rel = <int>valid_data_array[i, 1]
+        all_triples.data_tail[i + train_num].tail = <int>valid_data_array[i, 2]
     
     quick_sort(all_triples.data_head, train_num + valid_num, cmp_head)
     quick_sort(all_triples.data_tail, train_num + valid_num, cmp_tail)
@@ -318,24 +318,24 @@ cdef void putAllInCache_c(long[:, ::1] train_data_array, long[:, ::1] valid_data
         all_triples.data_head, all_triples.data_tail, train_num + valid_num, entityTotal)
 
 
-cdef void get_constrain(Constrain **ptr, Data *data_ptr, int relationTotal):
-    global global_mem
+cdef void get_constrain(Constrain **ptr, DataStruct *data_ptr, int relationTotal):
+    global global_memory_pool
     cdef:
         int i
-        Pool tmp_mem = Pool()
+        MemoryPool tmp_mem = MemoryPool()
         Triple *data_rel_1 = <Triple*>tmp_mem.alloc(data_ptr.data_size, sizeof(Triple))
         Triple *data_rel_2 = <Triple*>tmp_mem.alloc(data_ptr.data_size, sizeof(Triple))
         Constrain constrain
 
-    constrain.left_id_of_heads_of_relation = <long*>global_mem.alloc(relationTotal, sizeof(long))
-    constrain.right_id_of_heads_of_relation = <long*>global_mem.alloc(relationTotal, sizeof(long))
-    constrain.left_id_of_tails_of_relation = <long*>global_mem.alloc(relationTotal, sizeof(long))
-    constrain.right_id_of_tails_of_relation = <long*>global_mem.alloc(relationTotal, sizeof(long))
+    constrain.left_id_of_heads_of_relation = <int*>global_memory_pool.alloc(relationTotal, sizeof(int))
+    constrain.right_id_of_heads_of_relation = <int*>global_memory_pool.alloc(relationTotal, sizeof(int))
+    constrain.left_id_of_tails_of_relation = <int*>global_memory_pool.alloc(relationTotal, sizeof(int))
+    constrain.right_id_of_tails_of_relation = <int*>global_memory_pool.alloc(relationTotal, sizeof(int))
 
-    memset(constrain.left_id_of_heads_of_relation, -1, relationTotal * sizeof(long))
-    memset(constrain.right_id_of_heads_of_relation, -1, relationTotal * sizeof(long))
-    memset(constrain.left_id_of_tails_of_relation, -1, relationTotal * sizeof(long))
-    memset(constrain.right_id_of_tails_of_relation, -1, relationTotal * sizeof(long))
+    memset(constrain.left_id_of_heads_of_relation, -1, relationTotal * sizeof(int))
+    memset(constrain.right_id_of_heads_of_relation, -1, relationTotal * sizeof(int))
+    memset(constrain.left_id_of_tails_of_relation, -1, relationTotal * sizeof(int))
+    memset(constrain.right_id_of_tails_of_relation, -1, relationTotal * sizeof(int))
 
     memcpy(data_rel_1, data_ptr.data_head, data_ptr.data_size * sizeof(Triple))
     memcpy(data_rel_2, data_ptr.data_head, data_ptr.data_size * sizeof(Triple))
@@ -356,15 +356,27 @@ cdef void get_constrain(Constrain **ptr, Data *data_ptr, int relationTotal):
 
     ptr[0] = &constrain
     
-cdef np.ndarray[long, ndim=2] getDataFromCache_c(Data *ptr):
+# cdef int[:, ::1] getDataFromCache_c(DataStruct *ptr):
+#     cdef:
+#         int* data = <int *> global_memory_pool.alloc(3 * ptr.data_size, sizeof(int))
+#         int i
+    
+#     for i in range(ptr.data_size):
+#         data[3 * i] = ptr.data_head[i].head
+#         data[3 * i + 1] = ptr.data_head[i].rel
+#         data[3 * i + 2] = ptr.data_head[i].tail
+    
+#     return <int[:ptr.data_size, :3]>data
+
+cdef np.ndarray[long, ndim=2] getDataFromCache_c(DataStruct *ptr):
     cdef:
-        long[:, ::1] data = np.zeros((ptr.data_size, 3), dtype=np.int64)
+        long[:, ::1] data = np.zeros((ptr.data_size, 3), dtype=np.int32)
         int i
     
     for i in range(ptr.data_size):
-        data[i, 0] = ptr.data_head[i].head
-        data[i, 1] = ptr.data_head[i].rel
-        data[i, 2] = ptr.data_head[i].tail
+        data[i, 0] = <long>(ptr.data_head[i].head)
+        data[i, 1] = <long>(ptr.data_head[i].rel)
+        data[i, 2] = <long>(ptr.data_head[i].tail)
     
     return np.array(data, copy=False)
 
@@ -377,8 +389,8 @@ def getTotal(path_file):
     return getTotal_c(<char*>path_file)
 
 def setGlobalPool():
-    global global_mem
-    global_mem = Pool()
+    global global_memory_pool
+    global_memory_pool = MemoryPool()
 
 def initializeTrainData():
     global train_data  
@@ -439,16 +451,22 @@ cdef char* generate_path_c(const unsigned char[:] path, const unsigned char[:] f
     
     if path[-1] != b'/':
         length_path += 1
+    
+    # printf(b'loading ....\n')
 
-    path_c = <char*>global_mem.alloc(length_path + length_name + 1, sizeof(char))
+    path_c = <char*>global_memory_pool.alloc(length_path + length_name + 1, sizeof(char))
+    # printf(b'loading ....\n')
     for i in range(length_path-1):
+        # printf('%c', path[i])
         path_c[i] = path[i]
+    # printf(b'\n')
     path_c[length_path-1] = b'/'
     
     for i in range(length_name):
         path_c[i + length_path] = file_name[i]
 
     path_c[length_path + length_name] = b'\0'
+    # printf('%s\n', path_c)
     return path_c
 
 
@@ -463,19 +481,19 @@ cdef class DataSet:
         global valid_data
         global test_data
         global all_triples
-        global global_mem
-        global_mem = Pool()
-        cdef char* train2id_path = generate_path_c(root_path, b"train2id.txt")
-        cdef char* valid2id_path = generate_path_c(root_path, b"valid2id.txt")
-        cdef char* test2id_path = generate_path_c(root_path, b"test2id.txt")
-        
+        global global_memory_pool
+        global_memory_pool = MemoryPool()
         cdef:
             char* entity2id_path
             char* relation2id_path
+            char* train2id_path = generate_path_c(root_path, b"train2id.txt")
             long[:, ::1] train_data_array = loadTripleIdFile_c(train2id_path)
+            char* valid2id_path = generate_path_c(root_path, b"valid2id.txt")
             long[:, ::1] valid_data_array = loadTripleIdFile_c(valid2id_path)
+            char* test2id_path = generate_path_c(root_path, b"test2id.txt")
             long[:, ::1] test_data_array = loadTripleIdFile_c(test2id_path)
         
+        # print('load data from files')
         if no_sort > 0:
             entity2id_path = generate_path_c(root_path, b"entity2id_no_sort.txt")
             relation2id_path = generate_path_c(root_path, b"relation2id_no_sort.txt")
@@ -489,6 +507,8 @@ cdef class DataSet:
         initializeData(&valid_data)
         initializeData(&test_data)
         initializeData(&all_triples)
+
+        # print('put data into cache\n')
 
         putAllInCache_c(train_data_array, valid_data_array, test_data_array, self.num_ent, self.num_rel)
 
@@ -516,25 +536,36 @@ cdef class DataSet:
     def resetAllInCache(self, long[:, ::1] train_data, long[:, ::1] valid_data, long[:, ::1] test_data):
         putAllInCache_c(train_data, valid_data, test_data, self.num_ent, self.num_rel)
     
+    def update(self):
+        putAllInCache_c(getDataFromCache_c(&train_data),
+                        getDataFromCache_c(&valid_data),
+                        getDataFromCache_c(&test_data),
+                        self.num_ent, self.num_rel)
+    
     property train:
         def __get__(self):
-            return self.getTrain()
+            global train_data
+            return getDataFromCache_c(&train_data)
         
         def __set__(self, long[:, ::1] value):
-            # putTrainInCache_c(value, self.num_ent, self.num_rel)
-            putAllInCache_c(value, self.getValid(), self.getTest(), self.num_ent, self.num_rel)
+            putTrainInCache_c(value, self.num_ent, self.num_rel)
+            # putAllInCache_c(value, self.getValid(), self.getTest(), self.num_ent, self.num_rel)
     
     property valid:
         def __get__(self):
-            return self.getValid()
+            global valid_data
+            return getDataFromCache_c(&valid_data)
         
         def __set__(self, long[:, ::1] value):
-            putAllInCache_c(self.getTrain(), value, self.getTest(), self.num_ent, self.num_rel)
+            global test_data
+            putValidAndTestInCache_c(value, getDataFromCache_c(&test_data), self.num_ent, self.num_rel)
     
     property test:
         def __get__(self):
-            return self.getTest()
+            global test_data
+            return getDataFromCache_c(&test_data)
         
         def __set__(self, long[:, ::1] value):
-            putAllInCache_c(self.getTrain(), self.getValid(), value, self.num_ent, self.num_rel)
+            global valid_data
+            putValidAndTestInCache_c(getDataFromCache_c(&valid_data), value, self.num_ent, self.num_rel)
 

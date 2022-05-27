@@ -1,9 +1,13 @@
-from .Loss import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from .Loss import Loss
 
 class SoftplusLoss(Loss):
 
-    def __init__(self, adv_temperature=None):
-        super(SoftplusLoss, self).__init__()
+    def __init__(self, adv_temperature=None, element_type='triple'):
+        super(SoftplusLoss, self).__init__(element_type=element_type)
         self.criterion = nn.Softplus()
         if adv_temperature != None:
             self.adv_temperature = nn.Parameter(torch.Tensor([adv_temperature]))

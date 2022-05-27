@@ -28,14 +28,13 @@ Options.docstrings = True
 PACKAGES = find_packages()
 
 MOD_NAMES = [
-    "kgraph.utils.cache_data",
     "kgraph.utils.corrupt",
-    "kgraph.utils.mem",
-    "kgraph.utils.random_int64",
+    "kgraph.utils.memory",
     "kgraph.utils.read",
     "kgraph.utils.sample",
-    "kgraph.utils.test",
+    "kgraph.utils.evaluation",
     "kgraph.utils.tools",
+    "kgraph.utils.classification",
 ]
 
 
@@ -45,15 +44,15 @@ COMPILE_OPTIONS = {
     "other": ["-O3", "-Wno-strict-prototypes", "-Wno-unused-function"]
 }
 
-LINK_OPTIONS = {"msvc": ["-std=c++11"], "mingw32": ["-std=c++11"], "other": []}
+LINK_OPTIONS = {"mingw32": ["-std=c++11"], "other": []}
 
 COMPILER_DIRECTIVES = {
     "language_level": 3,
 }
 
 COPY_FILES = {
-    ROOT / "setup.cfg": ROOT / "tests" / "package",
-    ROOT / "README.md": ROOT / "tests" / "package",
+    ROOT / "setup.cfg": ROOT / "tests",
+    ROOT / "README.md": ROOT / "tests",
     # ROOT / "LICENSE": PACKAGE_ROOT / "tests" / "package",
 }
 
@@ -103,7 +102,7 @@ class build_ext_subclass(build_ext, build_ext_options):
 
 def clean(path):
     for path in path.glob("**/*"):
-        if path.is_file() and path.suffix in (".so", ".cpp", ".html"):
+        if path.is_file() and path.suffix in (".so", ".cpp", ".pyd", ".html"):
             print(f"Deleting {path.name}")
             path.unlink()
 
@@ -111,10 +110,10 @@ def setup_package():
     # write_git_info_py()
     if len(sys.argv) > 1 and sys.argv[1] == "clean":
         return clean(PACKAGE_ROOT)
-
-    # with (PACKAGE_ROOT / "about.py").open("r") as f:
-    #     about = {}
-    #     exec(f.read(), about)
+    
+    root = os.getcwd()
+    if not os.path.exists(os.path.join(root, "tests", "package")):
+        os.makedirs(os.path.join(root, "tests", "package"))
 
     for copy_file, target_dir in COPY_FILES.items():
         if copy_file.exists():
@@ -146,6 +145,8 @@ def setup_package():
     )
     
     clean(PACKAGE_ROOT)
+    
+    shutil.copy(os.path.join("./", "test.py"), os.path.join("./", "build", "lib.lib.win-amd64-3.7"))
 
 
 if __name__ == "__main__":

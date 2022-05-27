@@ -2,18 +2,18 @@
 # distutils: language=c++
 import numpy as np
 cimport numpy as np
-from cython cimport long, int, float, sizeof
+from cython cimport int, float, sizeof
 from cython cimport boundscheck, wraparound
 from cython.parallel cimport prange, parallel
 from libc.stdio cimport printf
-from .mem cimport Pool
+# from memory cimport Pool
 
-from .cache_data cimport global_mem
-from .random_int64 cimport setRandSeed
-from .random_int64 cimport randReset
-from .random_int64 cimport rand_max
-from .random_int64 cimport rand64
-from .random_int64 cimport _rand64
+from .memory cimport global_memory_pool
+from .memory cimport setRandSeed
+from .memory cimport randReset
+from .memory cimport rand_max
+from .memory cimport rand64
+from .memory cimport _rand64
 from .read cimport train_data
 from .corrupt cimport find_target_id
 from .corrupt cimport corrupt_tail_c
@@ -53,7 +53,7 @@ cdef void initializeKwargs(Kwargs *kwargs):
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs) nogil:
+cdef void generate_triple_with_negative_on_random(int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs) nogil:
     cdef:
         int i, j, tmp, tId
         int lef, rig
@@ -104,7 +104,7 @@ cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_triple_with_negative(int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
     cdef:
         int i, j, tmp, tId
         int lef, rig
@@ -112,7 +112,7 @@ cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] b
         float prob, p
     
     if kwargs.TID == NULL:
-        kwargs.TID = <int*>global_mem.alloc(train_data.data_size, sizeof(int))
+        kwargs.TID = <int*>global_memory_pool.alloc(train_data.data_size, sizeof(int))
         for i in range(train_data.data_size):
             kwargs.TID[i] = i
         kwargs.start = 0
@@ -166,7 +166,7 @@ cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] b
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_pair_on_random(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_pair_on_random(int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
     cdef:
         int i, j, tmp, tId, lef, rig, lef_id, rig_id
         float y_label
@@ -200,7 +200,7 @@ cdef void generate_pair_on_random(long[:, ::1] batch_data, float[:, ::1] batch_l
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_pair(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_pair(int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
     cdef:
         int i, j, tmp, tId, lef, rig, lef_id, rig_id, start
         float y_label
@@ -214,7 +214,7 @@ cdef void generate_pair(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwa
         batch_labels[...] = 0.
 
     if kwargs.TID == NULL:
-        kwargs.TID = <int*>global_mem.alloc(size, sizeof(int))
+        kwargs.TID = <int*>global_memory_pool.alloc(size, sizeof(int))
         for i in range(size):
             kwargs.TID[i] = i
         kwargs.start = 0
@@ -255,7 +255,7 @@ cdef class Sample:
         Kwargs kwargs
     
     def __init__(self, ent_num: int, rel_num: int, batch_size: int=128, num_threads: int=2, smooth_lambda: float=0.1,
-                 negative_rate: int=1, mode: int=0, bern_flag: bint=0, seed: int=2357, element_type: int=0):
+                 negative_rate: int=1, mode: int=0, bern_flag: bint=0, seed: int=41504, element_type: int=0):
         setRandSeed(seed)
         if num_threads < 1:
             num_threads = 1
@@ -292,7 +292,7 @@ cdef class Sample:
 
         # printf('thread: %d\n', self.kwargs.num_threads)
     
-    def _init_training_hyparameter(self, flags: bool=True, num_batch: int=0, batch_size: int=128):
+    cdef _init_training_hyparameter(self, flags: bool=True, num_batch: int=0, batch_size: int=128):
         cdef:
             int tmp_num_batch, tmp_batch_size
             int size
@@ -353,10 +353,10 @@ cdef class Sample:
             return train_data.lef_pair_num + train_data.rig_pair_num
 
     
-    def get_batch_size(self):
+    cdef get_batch_size(self):
         return self._j
     
-    def _set_num_per_thread(self):
+    cdef _set_num_per_thread(self):
         cdef int n, m
         if self._batch_size > self.kwargs.num_threads:
             n = self._batch_size // self.kwargs.num_threads
@@ -370,8 +370,11 @@ cdef class Sample:
         cdef:
             bint flag
             int i, j, tmp
-            long[:, ::1] batch_data = np.empty(((self._batch_size+1) * (1 + self.kwargs.negative_sample_size), 3), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty(((self._batch_size+1) * (1 + self.kwargs.negative_sample_size), 1), dtype=np.float32)
+            int tmp_batch_size = (self._batch_size+1) * (1 + self.kwargs.negative_sample_size)
+            # int[:, ::1] batch_data = np.empty((tmp_batch_size, 3), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :3]>(<int *>global_memory_pool.alloc(tmp_batch_size * 3, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty((tmp_batch_size, 1), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :1]>(<float *>global_memory_pool.alloc(tmp_batch_size, sizeof(float)))
         if self._have_initialized:
             
             self._set_num_per_thread()
@@ -387,7 +390,7 @@ cdef class Sample:
             self._j = j
             j *= (self.kwargs.negative_sample_size + 1)
             generate_triple_with_negative(batch_data[:j, :], batch_labels[:j, :], &self.kwargs)
-            yield np.array(batch_data[:j, :], copy=False), np.array(batch_labels[:j, :], copy=False)
+            yield np.array(batch_data[:j, :], dtype=np.int32), np.array(batch_labels[:j, :], dtype=np.float32)
         else:
             self.kwargs.start = 0
     
@@ -398,22 +401,28 @@ cdef class Sample:
         
         cdef:
             int i
-            long[:, ::1] batch_data = np.empty((self._batch_size * (1 + self.kwargs.negative_sample_size), 3), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty((self._batch_size * (1 + self.kwargs.negative_sample_size), 1), dtype=np.float32)
+            int tmp_batch_size = self._batch_size * (1 + self.kwargs.negative_sample_size)
+            # int[:, ::1] batch_data = np.empty((tmp_batch_size, 3), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :3]>(<int *>global_memory_pool.alloc(tmp_batch_size * 3, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty((tmp_batch_size, 1), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :1]>(<float *>global_memory_pool.alloc(tmp_batch_size, sizeof(float)))
         
         self.kwargs.batch_size = self._batch_size
         self._j = self._batch_size
 
         for i in range(self._num_batch):
             generate_triple_with_negative_on_random(batch_data, batch_labels, &self.kwargs)
-            yield np.array(batch_data), np.array(batch_labels)
+            yield np.array(batch_data, dtype=np.int32), np.array(batch_labels, dtype=np.float32)
         
     def generate_pair(self):
         cdef:
             bint flag
             int i, j, tmp
-            long[:, ::1] batch_data = np.empty(((self._batch_size+1), 2), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty(((self._batch_size+1), self.kwargs.ent_num), dtype=np.float32)
+            int tmp_batch_size = self._batch_size+1
+            # int[:, ::1] batch_data = np.empty(((self._batch_size+1), 2), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :2]>(<int *>global_memory_pool.alloc(tmp_batch_size * 2, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty(((self._batch_size+1), self.kwargs.ent_num), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :self.kwargs.ent_num]>(<float *>global_memory_pool.alloc(tmp_batch_size * self.kwargs.ent_num, sizeof(float)))
         if self._have_initialized:            
             self._set_num_per_thread()
             self._have_initialized = False
@@ -427,7 +436,7 @@ cdef class Sample:
             self._j = j
             self.kwargs.batch_size = j
             generate_pair(batch_data[:j, :], batch_labels[:j, :], &self.kwargs)
-            yield np.array(batch_data[:j, :], copy=False), np.array(batch_labels[:j, :], copy=False)
+            yield np.array(batch_data[:j, :], dtype=np.int32), np.array(batch_labels[:j, :], dtype=np.float32)
         else:
             self.kwargs.start = 0
     
@@ -439,15 +448,18 @@ cdef class Sample:
         
         cdef:
             int i
-            long[:, ::1] batch_data = np.empty((self._batch_size, 2), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty((self._batch_size, self.kwargs.ent_num), dtype=np.float32)
+            int tmp_batch_size = self._batch_size
+            # int[:, ::1] batch_data = np.empty((self._batch_size, 2), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :2]>(<int *>global_memory_pool.alloc(tmp_batch_size * 2, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty((self._batch_size, self.kwargs.ent_num), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :self.kwargs.ent_num]>(<float *>global_memory_pool.alloc(tmp_batch_size * self.kwargs.ent_num, sizeof(float)))
 
         self.kwargs.batch_size = self._batch_size
         self._j = self._batch_size
 
         for i in range(self._num_batch):
             generate_pair_on_random(batch_data, batch_labels, &self.kwargs)
-            yield np.array(batch_data), np.array(batch_labels)
+            yield np.array(batch_data, dtype=np.int32), np.array(batch_labels, dtype=np.float32)
     
     property num_batch:
         def __get__(self):
