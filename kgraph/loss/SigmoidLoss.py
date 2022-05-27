@@ -1,9 +1,13 @@
-from .Loss import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from .Loss import Loss
 
 class SigmoidLoss(Loss):
 
-    def __init__(self, adv_temperature=None):
-        super(SigmoidLoss, self).__init__()
+    def __init__(self, adv_temperature=None, element_type='triple'):
+        super(SigmoidLoss, self).__init__(element_type=element_type)
         self.criterion = nn.LogSigmoid()
 
         if adv_temperature != None:

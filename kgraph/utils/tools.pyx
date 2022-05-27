@@ -133,9 +133,9 @@ def generateTripleIdFile(from_original_data_dir, to_dir, sep='\t', no_sort=True)
         write_triple_from_original_data(data, to_id_files[i], (ent2id, rel2id), sep=sep)
 
 def clean(
-    np.ndarray[long, ndim=2] train_array,
-    np.ndarray[long, ndim=2] valid_array,
-    np.ndarray[long, ndim=2] test_array
+    np.ndarray[int, ndim=2] train_array,
+    np.ndarray[int, ndim=2] valid_array,
+    np.ndarray[int, ndim=2] test_array
 ):
     cdef np.ndarray train_ent = np.unique(np.concatenate(train_array[:, 0], train_array[:, 2]))
     cdef np.ndarray train_rel = np.unique(train_array[:, 1])
@@ -146,16 +146,16 @@ def clean(
     return valid_array[valid_index], test_array[test_index]
 
 def generateN2N(
-    np.ndarray[long, ndim=2] train_array,
-    np.ndarray[long, ndim=2] valid_array,
-    np.ndarray[long, ndim=2] test_array,
+    np.ndarray[int, ndim=2] train_array,
+    np.ndarray[int, ndim=2] valid_array,
+    np.ndarray[int, ndim=2] test_array,
     save_path="", sep='\t'
 ):
     cdef float rig_n, lef_n
-    lef = {}
-    rig = {}
-    rel_lef = {}
-    rel_rig = {}
+    lef = {}                # pair(h, r) -->tail   the lef pair of a triple
+    rig = {}                # pair(r, t) -->head
+    rel_lef = {}            # rel --> head --> num
+    rel_rig = {}            # rel --> tail --> num
     data = np.concatenate((train_array, valid_array, test_array), axis=0)
     for triple in data:
         h, r, t = triple
@@ -184,10 +184,10 @@ def generateN2N(
                 f.write(" %d" % j)
             f.write("\n")
 
-    rel_lef = {}     # r --> the out degree
-    tot_lef = {}     # r --> total the number of (X, r) in the lef key.
-    rel_rig = {}     # r --> the in degree
-    tot_rig = {}     # r --> total the number of (r, X) in the rig key.
+    rel_lef = {}     # r --> the in degree
+    tot_lef = {}     # r --> total the number of (r, X) in the lef key.
+    rel_rig = {}     # r --> the out degree
+    tot_rig = {}     # r --> total the number of (X, r) in the rig key.
 
     for i in lef:
         if not i[1] in rel_lef:
@@ -210,16 +210,16 @@ def generateN2N(
     for triple in test_array:
         h, r, t = triple
         content = f'{h}\t{r}\t{t}\n'
-        rig_n = rel_lef[r] / tot_lef[r]
-        lef_n = rel_rig[r] / tot_rig[r]
+        lef_n = rel_lef[r] / tot_lef[r]
+        rig_n = rel_rig[r] / tot_rig[r]
         if (rig_n < 1.5 and lef_n < 1.5):
             f11.write(content)
             # fall.write("0"+"\t"+content)
         if (rig_n >= 1.5 and lef_n < 1.5):
-            f1n.write(content)
+            fn1.write(content)
             # fall.write("1"+"\t"+content)
         if (rig_n < 1.5 and lef_n >= 1.5):
-            fn1.write(content)
+            f1n.write(content)
             # fall.write("2"+"\t"+content)
         if (rig_n >= 1.5 and lef_n >= 1.5):
             fnn.write(content)

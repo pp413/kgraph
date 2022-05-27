@@ -1,9 +1,13 @@
-from .Loss import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+
+from .Loss import Loss
 
 class MarginLoss(Loss):
 
-    def __init__(self, adv_temperature=None, margin=6.0):
-        super(MarginLoss, self).__init__()
+    def __init__(self, adv_temperature=None, margin=6.0, element_type='triple'):
+        super(MarginLoss, self).__init__(element_type=element_type)
         self.margin = nn.Parameter(torch.Tensor([margin]))
         self.margin.requires_grad = False
 

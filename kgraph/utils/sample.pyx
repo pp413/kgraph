@@ -2,22 +2,24 @@
 # distutils: language=c++
 import numpy as np
 cimport numpy as np
-from cython cimport long, int, float, sizeof
+from cython cimport int, float, sizeof
 from cython cimport boundscheck, wraparound
 from cython.parallel cimport prange, parallel
 from libc.stdio cimport printf
-from .mem cimport Pool
+# from memory cimport Pool
 
-from .cache_data cimport global_mem
-from .random_int64 cimport setRandSeed
-from .random_int64 cimport randReset
-from .random_int64 cimport rand_max
-from .random_int64 cimport rand64
-from .random_int64 cimport _rand64
-from .read cimport train_data
+from .memory cimport setRandSeed
+from .memory cimport randReset
+from .memory cimport rand_max
+from .memory cimport rand64
+from .memory cimport _rand64
+from .memory cimport DataStruct
+from .memory cimport MemoryPool
+from .read cimport DataSet
 from .corrupt cimport find_target_id
 from .corrupt cimport corrupt_tail_c
 from .corrupt cimport corrupt_head_c
+
 
 ctypedef struct Kwargs:
     int batch_size, negative_sample_size, num_threads
@@ -27,6 +29,8 @@ ctypedef struct Kwargs:
     int *TID
     int num_per_thread
     int normal_or_cross
+    int use_shuffle
+    int train_data_size
 
 cdef void shuffle(int *ptr, int length):
     cdef int tmp
@@ -50,41 +54,43 @@ cdef void initializeKwargs(Kwargs *kwargs):
     kwargs.TID = NULL
     kwargs.num_per_thread = 0
     kwargs.normal_or_cross = 0
+    kwargs.use_shuffle = 1
+    kwargs.train_data_size = 0
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs) nogil:
+cdef void generate_triple_with_negative_on_random(DataStruct *train_data_ptr, int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs) nogil:
     cdef:
         int i, j, tmp, tId
         int lef, rig
         float prob, p
+        DataStruct* data_ptr = train_data_ptr
     
     for tId in prange(kwargs.num_threads, nogil=True, schedule='static', num_threads=kwargs.num_threads):
         lef = tId * kwargs.num_per_thread
         rig = min((tId + 1) * kwargs.num_per_thread, kwargs.batch_size)
         for i in range(lef, rig):
-            tmp = rand_max(tId, train_data.data_size)
-            batch_data[i, 0] = train_data.data[tmp].head
-            batch_data[i, 1] = train_data.data[tmp].rel
-            batch_data[i, 2] = train_data.data[tmp].tail
+            tmp = rand_max(tId, data_ptr.data_size, 1)
+            batch_data[i, 0] = data_ptr.data[tmp].head
+            batch_data[i, 1] = data_ptr.data[tmp].rel
+            batch_data[i, 2] = data_ptr.data[tmp].tail
             batch_labels[i, 0] = 0.
+            if kwargs.bern_flag:
+                p = (data_ptr.rig_mean[batch_data[i, 1]] + data_ptr.lef_mean[batch_data[i, 1]])
+                prob = 1000. * data_ptr.rig_mean[batch_data[i, 1]]
+            else:
+                p = 1.
+                prob = 500.
             for j in range(1, kwargs.negative_sample_size + 1):
                 tmp = i + j * kwargs.batch_size
                 if kwargs.mode == 0 and kwargs.normal_or_cross == 0:
-                    if kwargs.bern_flag:
-                        p = (train_data.rig_mean[batch_data[i, 1]] + train_data.lef_mean[batch_data[i, 1]])
-                        prob = 1000. * train_data.rig_mean[batch_data[i, 1]]
-                    else:
-                        p = 1.
-                        prob = 500.
-                    
                     if (_rand64(tId) % 1000) * p < prob:
                         batch_data[tmp, 0] = batch_data[i, 0]
                         batch_data[tmp, 1] = batch_data[i, 1]
-                        batch_data[tmp, 2] = corrupt_tail_c(tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 2] = corrupt_tail_c(data_ptr, tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_labels[tmp, 0] = -1.
                     else:
-                        batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[tmp, 0] = 1.
@@ -92,60 +98,64 @@ cdef void generate_triple_with_negative_on_random(long[:, ::1] batch_data, float
                     if kwargs.normal_or_cross == 1:
                         kwargs.mode = 0 - kwargs.mode
                     if kwargs.mode == -1:
-                        batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[tmp, 0] = 1.
                     else:
                         batch_data[tmp, 0] = batch_data[i, 0]
                         batch_data[tmp, 1] = batch_data[i, 1]
-                        batch_data[tmp, 2] = corrupt_tail_c(tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 2] = corrupt_tail_c(data_ptr, tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_labels[tmp, 0] = -1.
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_triple_with_negative(DataStruct *train_data, int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs, MemoryPool tmp_memory_pool):
     cdef:
         int i, j, tmp, tId
         int lef, rig
         int start
         float prob, p
+        DataStruct* data_ptr = train_data
+        # MemoryPool tmp_memory_pool
+    
+    # tmp_memory_pool = MemoryPool()
     
     if kwargs.TID == NULL:
-        kwargs.TID = <int*>global_mem.alloc(train_data.data_size, sizeof(int))
-        for i in range(train_data.data_size):
+        kwargs.TID = <int*>tmp_memory_pool.alloc(data_ptr.data_size, sizeof(int))
+        for i in range(data_ptr.data_size):
             kwargs.TID[i] = i
         kwargs.start = 0
     
     start = kwargs.start
     if start == 0:
-        shuffle(kwargs.TID, train_data.data_size)
+        shuffle(kwargs.TID, data_ptr.data_size)
     
     for tId in prange(kwargs.num_threads, nogil=True, schedule='static', num_threads=kwargs.num_threads):
         lef = tId * kwargs.num_per_thread
         rig = min((tId + 1) * kwargs.num_per_thread, kwargs.batch_size)
         for i in range(lef, rig):
             tmp =  kwargs.TID[start + i]
-            batch_data[i, 0] = train_data.data[tmp].head
-            batch_data[i, 1] = train_data.data[tmp].rel
-            batch_data[i, 2] = train_data.data[tmp].tail
+            batch_data[i, 0] = data_ptr.data[tmp].head
+            batch_data[i, 1] = data_ptr.data[tmp].rel
+            batch_data[i, 2] = data_ptr.data[tmp].tail
             batch_labels[i, 0] = 0.
+            if kwargs.bern_flag:
+                p = (data_ptr.rig_mean[batch_data[i, 1]] + data_ptr.lef_mean[batch_data[i, 1]])
+                prob = 1000. * data_ptr.rig_mean[batch_data[i, 1]]
+            else:
+                p = 1.
+                prob = 500.
             for j in range(1, kwargs.negative_sample_size + 1):
                 tmp = i + j * kwargs.batch_size
                 if kwargs.mode == 0 and kwargs.normal_or_cross == 0:
-                    if kwargs.bern_flag:
-                        p = (train_data.rig_mean[batch_data[i, 1]] + train_data.lef_mean[batch_data[i, 1]])
-                        prob = 1000. * train_data.rig_mean[batch_data[i, 1]]
-                    else:
-                        p = 1.
-                        prob = 500.
                     if _rand64(tId) % 1000 * p < prob:
                         batch_data[tmp, 0] = batch_data[i, 0]
                         batch_data[tmp, 1] = batch_data[i, 1]
-                        batch_data[tmp, 2] = corrupt_tail_c(tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 2] = corrupt_tail_c(data_ptr, tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_labels[tmp, 0] = -1.
                     else:
-                        batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[tmp, 0] = 1.
@@ -153,24 +163,26 @@ cdef void generate_triple_with_negative(long[:, ::1] batch_data, float[:, ::1] b
                     if kwargs.normal_or_cross == 1:
                         kwargs.mode = 0 - kwargs.mode
                     if kwargs.mode == -1:
-                        batch_data[tmp, 0] = corrupt_head_c(tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]
                         batch_labels[tmp, 0] = 1.
                     else:
                         batch_data[tmp, 0] = batch_data[i, 0]
                         batch_data[tmp, 1] = batch_data[i, 1]
-                        batch_data[tmp, 2] = corrupt_tail_c(tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num)
+                        batch_data[tmp, 2] = corrupt_tail_c(data_ptr, tId, batch_data[i, 0], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_labels[tmp, 0] = -1.
     kwargs.start += kwargs.batch_size
 
+
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_pair_on_random(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_pair_on_random(DataStruct *train_data_ptr, int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
     cdef:
         int i, j, tmp, tId, lef, rig, lef_id, rig_id
         float y_label
-        int size = train_data.lef_pair_num + train_data.rig_pair_num
+        DataStruct* data_ptr = train_data_ptr
+        int size = kwargs.train_data_size
     
     if kwargs.smooth_lambda > 0.:
         y_label = 1. - kwargs.smooth_lambda + 1.0 / kwargs.ent_num
@@ -183,28 +195,32 @@ cdef void generate_pair_on_random(long[:, ::1] batch_data, float[:, ::1] batch_l
         lef = tId * kwargs.num_per_thread
         rig = min((tId + 1) * kwargs.num_per_thread, kwargs.batch_size)
         for i in range(lef, rig):
-            if rand_max(tId, size) < 1. * train_data.lef_pair_num:
-                tmp = rand_max(tId, train_data.lef_pair_num)
-                batch_data[i, 0] = train_data.pair_tail_idx[tmp].ent
-                batch_data[i, 1] = train_data.pair_tail_idx[tmp].rel
-                lef_id, rig_id = find_target_id(train_data.pair_tail_idx, train_data.pair_lef_head, train_data.pair_rig_head, batch_data[i, 0], batch_data[i, 1])
+            if rand_max(tId, size, 1) < 1. * data_ptr.lef_pair_num:
+                tmp = rand_max(tId, data_ptr.lef_pair_num, 1)
+                batch_data[i, 0] = data_ptr.pair_tail_idx[tmp].ent
+                batch_data[i, 1] = data_ptr.pair_tail_idx[tmp].rel
+                lef_id, rig_id = find_target_id(data_ptr.pair_tail_idx, data_ptr.pair_lef_head, data_ptr.pair_rig_head, batch_data[i, 0], batch_data[i, 1])
                 for j in range(lef_id, rig_id + 1):
-                    batch_labels[i, train_data.data_head[j].tail] = y_label
+                    batch_labels[i, data_ptr.data_head[j].tail] = y_label
             else:
-                tmp = rand_max(tId, train_data.rig_pair_num)
-                batch_data[i, 0] = train_data.pair_head_idx[tmp].ent
-                batch_data[i, 1] = train_data.pair_head_idx[tmp].rel + kwargs.rel_num
-                lef_id, rig_id = find_target_id(train_data.pair_head_idx, train_data.pair_lef_tail, train_data.pair_rig_tail, batch_data[i, 0], batch_data[i, 1]-kwargs.rel_num)
+                tmp = rand_max(tId, data_ptr.rig_pair_num, 1)
+                batch_data[i, 0] = data_ptr.pair_head_idx[tmp].ent
+                batch_data[i, 1] = data_ptr.pair_head_idx[tmp].rel + kwargs.rel_num
+                lef_id, rig_id = find_target_id(data_ptr.pair_head_idx, data_ptr.pair_lef_tail, data_ptr.pair_rig_tail, batch_data[i, 0], batch_data[i, 1]-kwargs.rel_num)
                 for j in range(lef_id, rig_id + 1):
-                    batch_labels[i, train_data.data_tail[j].head] = y_label
+                    batch_labels[i, data_ptr.data_tail[j].head] = y_label
 
 @boundscheck(False)
 @wraparound(False)
-cdef void generate_pair(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs):
+cdef void generate_pair(DataStruct *train_data_ptr, int[:, ::1] batch_data, float[:, ::1] batch_labels, Kwargs *kwargs, MemoryPool tmp_memory_pool):
     cdef:
         int i, j, tmp, tId, lef, rig, lef_id, rig_id, start
         float y_label
-        int size = train_data.lef_pair_num + train_data.rig_pair_num
+        DataStruct* data_ptr = train_data_ptr
+        int size = kwargs.train_data_size
+        # MemoryPool tmp_memory_pool
+    
+    # tmp_memory_pool = MemoryPool()
     
     if kwargs.smooth_lambda > 0.:
         y_label = 1. - kwargs.smooth_lambda + 1.0 / kwargs.ent_num
@@ -213,8 +229,9 @@ cdef void generate_pair(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwa
         y_label = 1.
         batch_labels[...] = 0.
 
+    # printf('size: %d\n', size)
     if kwargs.TID == NULL:
-        kwargs.TID = <int*>global_mem.alloc(size, sizeof(int))
+        kwargs.TID = <int*>tmp_memory_pool.alloc(size, sizeof(int))
         for i in range(size):
             kwargs.TID[i] = i
         kwargs.start = 0
@@ -222,25 +239,34 @@ cdef void generate_pair(long[:, ::1] batch_data, float[:, ::1] batch_labels, Kwa
     start = kwargs.start
     if start == 0:
         shuffle(kwargs.TID, size)
+
+    # printf('start: %d\n', start)
     
     for tId in prange(kwargs.num_threads, nogil=True, schedule='static', num_threads=kwargs.num_threads):
         lef = tId * kwargs.num_per_thread
         rig = min((tId + 1) * kwargs.num_per_thread, kwargs.batch_size)
+        # printf('lef: %d, rig: %d\n', lef, rig)
         for i in range(lef, rig):
             tmp = kwargs.TID[start + i]
-            if tmp < train_data.lef_pair_num:
-                batch_data[i, 0] = train_data.pair_tail_idx[tmp].ent
-                batch_data[i, 1] = train_data.pair_tail_idx[tmp].rel
-                lef_id, rig_id = find_target_id(train_data.pair_tail_idx, train_data.pair_lef_head, train_data.pair_rig_head, batch_data[i, 0], batch_data[i, 1])
+            # printf('start+i: %d, tmp: %d\n', start + i, tmp)
+            if tmp < data_ptr.lef_pair_num:
+                batch_data[i, 0] = data_ptr.pair_tail_idx[tmp].ent
+                batch_data[i, 1] = data_ptr.pair_tail_idx[tmp].rel
+                # printf('1\n')
+                lef_id, rig_id = find_target_id(data_ptr.pair_tail_idx, data_ptr.pair_lef_head, data_ptr.pair_rig_head, batch_data[i, 0], batch_data[i, 1])
                 for j in range(lef_id, rig_id + 1):
-                    batch_labels[i, train_data.data_head[j].tail] = y_label
+                    batch_labels[i, data_ptr.data_head[j].tail] = y_label
+                # printf('11\n')
             else:
-                tmp = tmp - train_data.lef_pair_num
-                batch_data[i, 0] = train_data.pair_head_idx[tmp].ent
-                batch_data[i, 1] = train_data.pair_head_idx[tmp].rel + kwargs.rel_num
-                lef_id, rig_id = find_target_id(train_data.pair_head_idx, train_data.pair_lef_tail, train_data.pair_rig_tail, batch_data[i, 0], batch_data[i, 1]-kwargs.rel_num)
+                tmp = tmp - data_ptr.lef_pair_num
+                batch_data[i, 0] = data_ptr.pair_head_idx[tmp].ent
+                batch_data[i, 1] = data_ptr.pair_head_idx[tmp].rel + kwargs.rel_num
+                # printf('2\n')
+                lef_id, rig_id = find_target_id(data_ptr.pair_head_idx, data_ptr.pair_lef_tail, data_ptr.pair_rig_tail, batch_data[i, 0], data_ptr.pair_head_idx[tmp].rel)
                 for j in range(lef_id, rig_id + 1):
-                    batch_labels[i, train_data.data_tail[j].head] = y_label
+                    batch_labels[i, data_ptr.data_tail[j].head] = y_label
+                # printf('22\n')
+            # printf('4\n')
     kwargs.start += kwargs.batch_size
 
 
@@ -253,9 +279,11 @@ cdef class Sample:
         int _element_type
         bint _have_initialized
         Kwargs kwargs
+        DataStruct * data_ptr
+        MemoryPool tmp_memory_pool
     
-    def __init__(self, ent_num: int, rel_num: int, batch_size: int=128, num_threads: int=2, smooth_lambda: float=0.1,
-                 negative_rate: int=1, mode: int=0, bern_flag: bint=0, seed: int=2357, element_type: int=0):
+    def __init__(self, data: DataSet, batch_size: int=128, num_threads: int=2, smooth_lambda: float=0.1, use_shuffle: int=1,
+                 negative_rate: int=1, mode: int=0, bern_flag: bint=0, seed: int=41504, element_type: int=0):
         setRandSeed(seed)
         if num_threads < 1:
             num_threads = 1
@@ -265,16 +293,20 @@ cdef class Sample:
         self._batch_size = batch_size
         self.kwargs.num_threads = num_threads
         self.kwargs.smooth_lambda = smooth_lambda
-        self.kwargs.ent_num = ent_num
-        self.kwargs.rel_num = rel_num
+        self.kwargs.ent_num = data.num_ent
+        self.kwargs.rel_num = data.num_rel
         self.kwargs.negative_sample_size = negative_rate
         self.kwargs.bern_flag = bern_flag
+        self.kwargs.use_shuffle = use_shuffle
+
+        self.tmp_memory_pool = MemoryPool()
 
         self._num_batch = 0
         self._have_initialized = True
         self._residue = 0
         self._j = batch_size
-        self._element_type = 0
+        self.data_ptr = <DataStruct*>data.getTrainDataPtr()
+        self.kwargs.train_data_size = self.data_ptr.lef_pair_num + self.data_ptr.rig_pair_num
 
         if mode < 2:
             self.kwargs.mode = mode
@@ -285,14 +317,10 @@ cdef class Sample:
 
         self._element_type = element_type
         
-        if element_type == 0:
-            self._init_training_hyparameter(flags=True, num_batch=self._num_batch, batch_size=batch_size)
-        else:
-            self._init_training_hyparameter(flags=True, num_batch=self._num_batch, batch_size=batch_size)
+        self._init_training_hyparameter(flags=True, num_batch=self._num_batch, batch_size=batch_size)
 
-        # printf('thread: %d\n', self.kwargs.num_threads)
     
-    def _init_training_hyparameter(self, flags: bool=True, num_batch: int=0, batch_size: int=128):
+    cdef _init_training_hyparameter(self, flags: bool=True, num_batch: int=0, batch_size: int=128):
         cdef:
             int tmp_num_batch, tmp_batch_size
             int size
@@ -303,9 +331,9 @@ cdef class Sample:
             return
 
         if self._element_type == 0:
-            size = train_data.data_size
+            size = self.data_ptr.data_size
         else:
-            size = train_data.lef_pair_num + train_data.rig_pair_num
+            size = self.data_ptr.lef_pair_num + self.data_ptr.rig_pair_num
 
         if num_batch == 0:
             self._num_batch = size // batch_size
@@ -348,15 +376,15 @@ cdef class Sample:
     def get_size(self, flags='triple'):
         assert flags in ['triple', 'pair'], 'flags should be triple or pair'
         if flags == 'triple':
-            return train_data.data_size
+            return self.data_ptr.data_size
         else:
-            return train_data.lef_pair_num + train_data.rig_pair_num
+            return self.data_ptr.lef_pair_num + self.data_ptr.rig_pair_num
 
     
-    def get_batch_size(self):
+    cdef get_batch_size(self):
         return self._j
     
-    def _set_num_per_thread(self):
+    cdef _set_num_per_thread(self):
         cdef int n, m
         if self._batch_size > self.kwargs.num_threads:
             n = self._batch_size // self.kwargs.num_threads
@@ -370,8 +398,9 @@ cdef class Sample:
         cdef:
             bint flag
             int i, j, tmp
-            long[:, ::1] batch_data = np.empty(((self._batch_size+1) * (1 + self.kwargs.negative_sample_size), 3), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty(((self._batch_size+1) * (1 + self.kwargs.negative_sample_size), 1), dtype=np.float32)
+            int tmp_batch_size = (self._batch_size+1) * (1 + self.kwargs.negative_sample_size)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :3]>(<int *>self.tmp_memory_pool.alloc(tmp_batch_size * 3, sizeof(int)))
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :1]>(<float *>self.tmp_memory_pool.alloc(tmp_batch_size, sizeof(float)))
         if self._have_initialized:
             
             self._set_num_per_thread()
@@ -386,8 +415,8 @@ cdef class Sample:
             self.kwargs.batch_size = j
             self._j = j
             j *= (self.kwargs.negative_sample_size + 1)
-            generate_triple_with_negative(batch_data[:j, :], batch_labels[:j, :], &self.kwargs)
-            yield np.array(batch_data[:j, :], copy=False), np.array(batch_labels[:j, :], copy=False)
+            generate_triple_with_negative(self.data_ptr, batch_data[:j, :], batch_labels[:j, :], &self.kwargs, self.tmp_memory_pool)
+            yield np.array(batch_data[:j, :], dtype=np.int32), np.array(batch_labels[:j, :], dtype=np.float32)
         else:
             self.kwargs.start = 0
     
@@ -398,22 +427,26 @@ cdef class Sample:
         
         cdef:
             int i
-            long[:, ::1] batch_data = np.empty((self._batch_size * (1 + self.kwargs.negative_sample_size), 3), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty((self._batch_size * (1 + self.kwargs.negative_sample_size), 1), dtype=np.float32)
+            int tmp_batch_size = self._batch_size * (1 + self.kwargs.negative_sample_size)
+            # int[:, ::1] batch_data = np.empty((tmp_batch_size, 3), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :3]>(<int *>self.tmp_memory_pool.alloc(tmp_batch_size * 3, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty((tmp_batch_size, 1), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :1]>(<float *>self.tmp_memory_pool.alloc(tmp_batch_size, sizeof(float)))
         
         self.kwargs.batch_size = self._batch_size
         self._j = self._batch_size
 
         for i in range(self._num_batch):
-            generate_triple_with_negative_on_random(batch_data, batch_labels, &self.kwargs)
-            yield np.array(batch_data), np.array(batch_labels)
+            generate_triple_with_negative_on_random(self.data_ptr, batch_data, batch_labels, &self.kwargs)
+            yield np.array(batch_data, dtype=np.int32), np.array(batch_labels, dtype=np.float32)
         
     def generate_pair(self):
         cdef:
             bint flag
             int i, j, tmp
-            long[:, ::1] batch_data = np.empty(((self._batch_size+1), 2), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty(((self._batch_size+1), self.kwargs.ent_num), dtype=np.float32)
+            int tmp_batch_size = self._batch_size+1
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :2]>(<int *>self.tmp_memory_pool.alloc(tmp_batch_size * 2, sizeof(int)))
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :self.kwargs.ent_num]>(<float *>self.tmp_memory_pool.alloc(tmp_batch_size * self.kwargs.ent_num, sizeof(float)))
         if self._have_initialized:            
             self._set_num_per_thread()
             self._have_initialized = False
@@ -426,8 +459,9 @@ cdef class Sample:
             
             self._j = j
             self.kwargs.batch_size = j
-            generate_pair(batch_data[:j, :], batch_labels[:j, :], &self.kwargs)
-            yield np.array(batch_data[:j, :], copy=False), np.array(batch_labels[:j, :], copy=False)
+            # print('batch_size: ', self.kwargs.batch_size, i)
+            generate_pair(self.data_ptr, batch_data[:j, :], batch_labels[:j, :], &self.kwargs, self.tmp_memory_pool)
+            yield np.array(batch_data[:j, :], dtype=np.int32), np.array(batch_labels[:j, :], dtype=np.float32)
         else:
             self.kwargs.start = 0
     
@@ -439,15 +473,18 @@ cdef class Sample:
         
         cdef:
             int i
-            long[:, ::1] batch_data = np.empty((self._batch_size, 2), dtype=np.int64)
-            float[:, ::1] batch_labels = np.empty((self._batch_size, self.kwargs.ent_num), dtype=np.float32)
+            int tmp_batch_size = self._batch_size
+            # int[:, ::1] batch_data = np.empty((self._batch_size, 2), dtype=np.int64)
+            int[:, ::1] batch_data = <int[:tmp_batch_size, :2]>(<int *>self.tmp_memory_pool.alloc(tmp_batch_size * 2, sizeof(int)))
+            # float[:, ::1] batch_labels = np.empty((self._batch_size, self.kwargs.ent_num), dtype=np.float32)
+            float[:, ::1] batch_labels = <float[:tmp_batch_size, :self.kwargs.ent_num]>(<float *>self.tmp_memory_pool.alloc(tmp_batch_size * self.kwargs.ent_num, sizeof(float)))
 
         self.kwargs.batch_size = self._batch_size
         self._j = self._batch_size
 
         for i in range(self._num_batch):
-            generate_pair_on_random(batch_data, batch_labels, &self.kwargs)
-            yield np.array(batch_data), np.array(batch_labels)
+            generate_pair_on_random(self.data_ptr, batch_data, batch_labels, &self.kwargs)
+            yield np.array(batch_data, dtype=np.int32), np.array(batch_labels, dtype=np.float32)
     
     property num_batch:
         def __get__(self):
@@ -460,30 +497,4 @@ cdef class Sample:
             return self.get_batch_size()
         def __set__(self, int value):
             self._batch_size = value
-
-def find(head: int, rel: int, tail: int):
-    print('...........................')
-
-    cdef int i, lef, rig, n, m
-
-    # n = train_data.pair_lef_head[<int>head]
-    # m = train_data.pair_rig_head[<int>head]
-    # printf('target ent: %d, rel: %d\n', head, rel)
-    # printf('find target lef id: %d, ent: %ld, rel: %ld\n', n, train_data.pair_tail_idx[n].ent, train_data.pair_tail_idx[n].rel)
-    # printf('find target rig id: %d, ent: %ld, rel: %ld\n', m, train_data.pair_tail_idx[m].ent, train_data.pair_tail_idx[m].rel)
-
-    # for i in range(n, m+1):
-    #     printf('find target id: %d, ent: %ld, rel: %ld\n', i, train_data.pair_tail_idx[i].ent, train_data.pair_tail_idx[i].rel)
-    #     if i > 20:
-    #         break
-
-    lef, rig = find_target_id(train_data.pair_tail_idx, train_data.pair_lef_head, train_data.pair_rig_head, head, rel)
-
-    printf('lef_id: %d, rig_id: %d\n', lef, rig)
-
-    for i in range(lef, rig+1):
-        yield train_data.data_head[i].head, train_data.data_head[i].rel, train_data.data_head[i].tail
-
-
-
 
