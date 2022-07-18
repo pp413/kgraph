@@ -477,16 +477,21 @@ cdef char* generate_path_c(const unsigned char[:] path, const unsigned char[:] f
     
     if path[-1] != b'/':
         length_path += 1
+    
+    # printf(b'loading ....\n')
 
     path_c = <char*>tmp_memory_pool.alloc(length_path + length_name + 1, sizeof(char))
     for i in range(length_path-1):
+        # printf('%c', path[i])
         path_c[i] = path[i]
+    # printf(b'\n')
     path_c[length_path-1] = b'/'
     
     for i in range(length_name):
         path_c[i + length_path] = file_name[i]
 
     path_c[length_path + length_name] = b'\0'
+    # printf('%s\n', path_c)
     return path_c
 
 
@@ -537,6 +542,7 @@ cdef class DataSet:
             char* test2id_path = generate_path_c(root_path, b"test2id.txt", self.tmp_memory_pool)
             int[:, ::1] test_data_array = loadTripleIdFile_c(test2id_path, self.tmp_memory_pool)
         
+        # print('load data from files')
         if no_sort > 0:
             entity2id_path = generate_path_c(root_path, b"entity2id_no_sort.txt", self.tmp_memory_pool)
             relation2id_path = generate_path_c(root_path, b"relation2id_no_sort.txt", self.tmp_memory_pool)
