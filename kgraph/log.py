@@ -59,26 +59,31 @@ def get_result_table(rhs_ranks, rhs_franks, lhs_ranks, lhs_franks, data_name='be
     """
     
     ranks = {
-        'rhs_original': rhs_ranks,
-        'lhs_original': lhs_ranks,
-        'avg_original': np.append(rhs_ranks, lhs_ranks),
+        'rhs_original': get_results_from_rank(rhs_ranks),
+        'lhs_original': get_results_from_rank(lhs_ranks),
+        'avg_original': dict(),
         
-        'rhs_filtered': rhs_franks,
-        'lhs_filtered': lhs_franks,
-        'avg_filtered': np.append(rhs_franks, lhs_franks),
+        'rhs_filtered': get_results_from_rank(rhs_franks),
+        'lhs_filtered': get_results_from_rank(lhs_franks),
+        'avg_filtered': dict(),
     }
+    
+    for key, value in ranks['rhs_original'].items():
+        ranks['avg_original'][key] = round((value + ranks['lhs_original'][key]) * 1. / 2, 5)
+    
+    for key, value in ranks['rhs_filtered'].items():
+        ranks['avg_filtered'][key] = round((value + ranks['lhs_filtered'][key]) * 1. / 2, 5)
     
     final_results = {}
     
     tb = pt.PrettyTable(header=True)
     tb.title = 'The results of the {} datasets on the {} Process.'.format(data_name, flags)
-    tb.field_names = ['Categories', 'MR', 'MRR', 'Hits@1', 'Hits@3', 'Hits@5', 'Hits@10']
-    for name, rank in ranks.items():
-        results = get_results_from_rank(rank)
-        tb.add_row([name, results['mr'], results['mrr'], results['hits@1'], results['hits@3'], results['hits@5'], results['hits@10']])
+    tb.field_names = ['Categories', 'MR', 'MRR', 'Hits@1', 'Hits@3', 'Hits@10']
+    for name, results in ranks.items():
+        tb.add_row([name, results['mr'], results['mrr'], results['hits@1'], results['hits@3'], results['hits@10']])
         final_results[name] = results
         if name == 'avg_original':
-            tb.add_row(['', '', '', '', '', '', ''])
+            tb.add_row(['', '', '', '', '', ''])
     return tb.get_string(), final_results
 
 
