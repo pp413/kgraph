@@ -4,6 +4,8 @@ import numpy as np
 import logging, logging.config
 import prettytable as pt
 from pprint import pprint
+# from dvclive import Live
+from typing import Optional
 
 from .utils import get_results_from_rank
 
@@ -18,7 +20,7 @@ def set_logger(name, log_dir='./log'):
     "disable_existing_loggers": False,
     "formatters": {
         "simple": {
-            "format": "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s"
+            "format": "%(asctime)s - [%(name)s] - %(message)s"
         }
     },
 

@@ -16,11 +16,12 @@ cdef MemoryPool load_memory_pool
 
 from libc.stdio cimport printf
 
-cdef int* getNegTest(DataStruct *data_ptr, DataStruct* tmp_ptr, int[:, ::1] pos, int[:, ::1] neg, int num_ent):
+cdef int* getNegTest(DataStruct *pos_data_ptr, DataStruct *neg_data_ptr, DataStruct* tmp_ptr, int[:, ::1] pos, int[:, ::1] neg, int num_ent, int flag):
     cdef:
         int i
-        int total = data_ptr.data_size
-        Triple *posTestList = data_ptr.data
+        int total = pos_data_ptr.data_size
+        Triple *posTestList = pos_data_ptr.data
+        Triple *negTestList = neg_data_ptr.data
 
         int * label = <int*> load_memory_pool.alloc(total, sizeof(int))
     
@@ -28,16 +29,17 @@ cdef int* getNegTest(DataStruct *data_ptr, DataStruct* tmp_ptr, int[:, ::1] pos,
         pos[i, 0] = posTestList[i].head
         pos[i, 2] = posTestList[i].tail
         pos[i, 1] = posTestList[i].rel
-        neg[i, 0] = posTestList[i].head
-        neg[i, 2] = posTestList[i].tail
-        neg[i, 1] = posTestList[i].rel
+        neg[i, 0] = negTestList[i].head
+        neg[i, 2] = negTestList[i].tail
+        neg[i, 1] = negTestList[i].rel
         label[i] = 1
 
-        if _rand64(0) % 1000 < 500:
-            neg[i, 2] = corrupt_tail_c(tmp_ptr, 0, neg[i, 0], neg[i, 1], num_ent, 0)
-        else:
-            neg[i, 0] = corrupt_head_c(tmp_ptr, 0, neg[i, 2], neg[i, 1], num_ent, 0)
-            label[i] = 0
+        if flag == 0:
+            if _rand64(0) % 1000 < 500:
+                neg[i, 2] = corrupt_tail_c(tmp_ptr, 0, neg[i, 0], neg[i, 1], num_ent, 0)
+            else:
+                neg[i, 0] = corrupt_head_c(tmp_ptr, 0, neg[i, 2], neg[i, 1], num_ent, 0)
+                label[i] = 0
     
     return label
 
@@ -74,12 +76,14 @@ def run_triple_classification(function, data: DataSet, batch_size: int=1, thresh
 
         np.ndarray[float, ndim=1] res_pos, res_neg
 
-        DataStruct * data_ptr = data.getTestDataPtr()
+        DataStruct * pos_data_ptr = data.getPosTestDataPtr()
+        DataStruct * neg_data_ptr = data.getNegTestDataPtr()
         DataStruct * tmp_ptr = data.getTrainDataPtr()
 
         int num_ent = data.num_ent
+        int flag = data.triple_generate_negative_for_classification
 
-        int size = data_ptr.data_size
+        int size = pos_data_ptr.data_size
         float total_all = <float>(2 * size)
         float total_true = <float>size
         float total_false = <float>size
@@ -93,7 +97,7 @@ def run_triple_classification(function, data: DataSet, batch_size: int=1, thresh
         int[:, ::1] neg = <int[:size, :3]>negTestList_ptr
         int[:, ::1] pos = <int[:size, :3]>posTestList_ptr
 
-        int[::1] label = <int[:size]>getNegTest(data_ptr, tmp_ptr, pos, neg, num_ent)
+        int[::1] label = <int[:size]>getNegTest(pos_data_ptr, neg_data_ptr, tmp_ptr, pos, neg, num_ent, flag)
 
     num_batch = size / batch_size
     num_batch = num_batch if num_batch * batch_size == size else num_batch + 1

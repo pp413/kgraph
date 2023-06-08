@@ -15,6 +15,8 @@ auditwheel repair xxxxxxxxx.whl
 制作发布包
 python setup.py bdist_wheel
 
+python setup.py sdist
+
 twine upload dist/* -u name -p password --verbose
 
 安装：
@@ -47,7 +49,10 @@ ARGS:
 'manylinux2014_x86_64'
 
 
-#manylinux_2_31_x86_64
+
+auditwheel repair XXXXXXX.whl --plat manylinux_2_27_x86_64
+auditwheel repair XXXXXXX.whl --plat manylinux_2_28_x86_64
+auditwheel repair XXXXXXX.whl --plat manylinux_2_31_x86_64
 
 
 

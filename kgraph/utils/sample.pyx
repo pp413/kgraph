@@ -97,7 +97,7 @@ cdef void generate_triple_with_negative_on_random(DataStruct *train_data_ptr, in
                 else:
                     if kwargs.normal_or_cross == 1:
                         kwargs.mode = 0 - kwargs.mode
-                    if kwargs.mode == -1:
+                    if kwargs.mode == 1:
                         batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]
@@ -162,7 +162,7 @@ cdef void generate_triple_with_negative(DataStruct *train_data, int[:, ::1] batc
                 else:
                     if kwargs.normal_or_cross == 1:
                         kwargs.mode = 0 - kwargs.mode
-                    if kwargs.mode == -1:
+                    if kwargs.mode == 1:
                         batch_data[tmp, 0] = corrupt_head_c(data_ptr, tId, batch_data[i, 2], batch_data[i, 1], kwargs.ent_num, 1)
                         batch_data[tmp, 1] = batch_data[i, 1]
                         batch_data[tmp, 2] = batch_data[i, 2]

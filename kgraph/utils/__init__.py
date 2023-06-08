@@ -56,6 +56,11 @@ def log_statistics(statistics, data_name, path=None):
     tb = pt.PrettyTable(header=True)
     tb.title = f'The statistics of benchmark datasets.'
     tb.field_names = ['DataName', 'TrainSet', 'ValidSet', 'TestSet', 'Entities', 'Relations']
+    
+    if data_name in ['FB13', 'WN11']:
+        statistics[1] = statistics[1] // 2
+        statistics[2] = statistics[2] // 2
+    
     tb.add_row([data_name,] + statistics[:5])
     
     # print(tb)
@@ -69,21 +74,22 @@ def log_statistics(statistics, data_name, path=None):
 
 def load_data(url, path, sep='\t', no_sort=True):
     data_zip_name = url.split('/')[-1]
+    data_name = data_zip_name.split('.')[0]
+    
 
     if not os.path.exists(os.path.join(path)):
         os.makedirs(os.path.join(path))
 
-    if not os.path.exists(os.path.join(path, data_zip_name.split('.')[0])):
+    if not os.path.exists(os.path.join(path, data_name)):
         if not os.path.exists(os.path.join(path, data_zip_name)):
             download_data(url, os.path.join(path, data_zip_name))
         unzip(os.path.join(path, data_zip_name), os.path.join(path))
-    if not os.path.exists(os.path.join(path, data_zip_name.split('.')[0], 'train2id.txt')):
-        generateTripleIdFile(os.path.join(path, data_zip_name.split('.')[0]),
-                             os.path.join(path, data_zip_name.split('.')[0]),
+    if not os.path.exists(os.path.join(path, data_name, 'train2id.txt')):
+        generateTripleIdFile(os.path.join(path, data_name),
+                             os.path.join(path, data_name),
                              sep=sep, no_sort=no_sort)
-    data_name = data_zip_name.split('.')[0]
-    
     path = os.path.join(path, data_name)
+    
     statistics = get_statistics(path)
     log_statistics(statistics, data_name, path)
     
@@ -103,3 +109,44 @@ def get_results_from_rank(ranks):
     for k in range(10):
         results['hits@{}'.format(k+1)] = round((ranks[ranks <= k+1]).size / ranks.size, 5)
     return results
+
+
+def load_long_text_from_url(url, path):
+    data_zip_name = url.split('/')[-1]
+    data_name = data_zip_name.split('.')[0]
+    if not os.path.exists(os.path.join(path)):
+        os.makedirs(os.path.join(path))
+    
+    if not os.path.exists(os.path.join(path, data_name)):
+        if not os.path.exists(os.path.join(path, data_zip_name)):
+            download_data(url, os.path.join(path, data_zip_name))
+        unzip(os.path.join(path, data_zip_name), os.path.join(path))
+    
+    path = os.path.join(path, data_name)
+    return path
+
+
+def load_long_text_file(path, name, data_name, length=None):
+    data_dict = {}
+    long_dict = {}
+    
+    with open(os.path.join(path, LongText, name + '.txt'), 'r') as f:
+        for line in f.readlines():
+            line = line.strip().split('\t')
+            long_dict[line[0]] = line[1] if length is None else ling[1][:length]
+    
+    entity_name = 'entity2id_no_sort.txt' if os.path.exists(os.path.join(path, data_name, 'entity2id_no_sort.txt')) else 'entity2id_on_sort.txt'
+    
+    with open(os.path.join(path, data_name, entity_name), 'r') as f:
+        for line in f.readlines():
+            line = line.strip().split('\t')
+            if len(line) >=2:
+                data_dict[line[1]] = long_dict[line[0]]
+    
+    del long_dict
+    return data_dict
+    
+
+
+
+

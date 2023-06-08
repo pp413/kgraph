@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from .utils import load_data
+from .utils import get_statistics
 from .utils.read import DataSet
 from .utils.sample import Sample
 from .utils.tools import generateN2N, load_triple_original_file
@@ -20,18 +21,61 @@ class Data(DataSet):
     
     def __init__(self, num_ent: int=0, num_rel: int=0):
         super(Data, self).__init__(num_ent, num_rel)
+        self.no_sort = True
     
-    def load(self, path: str, no_sort: bool=True) -> None:
+    def load(self, path: str, no_sort: bool = True) -> None:
+        """
+        Load the dataset from the provided path.
+
+        Args:
+            path (str): The path to the dataset.
+            no_sort (bool, optional): If True, the dataset will not be sorted. Defaults to True.
+
+        Returns:
+            None
+        """
         path += '/'
-        
-        if isinstance(path, str):
-            path = path.encode('utf-8')
-        if isinstance(path, bytes):
-            super(Data, self).load(path, int(no_sort))
-        else:
+        path = path.encode('utf-8') if isinstance(path, str) else path
+        try:
+            super().load(path, int(no_sort))
+            self.path = path.decode('utf-8')
+            self.no_sort = no_sort
+        except FileNotFoundError:
             print('Can not find the dataset.')
-        self.path = path.decode('utf-8')
-        # print('ok')
+    
+    def load_description(self):
+        """
+        Loads the entity and relation descriptions from files in the given path.
+        If `no_sort` is True, it loads the unsorted versions of the files.
+        Returns two dictionaries: `ent_id2text` maps entity IDs to their descriptions,
+        and `rel_id2text` maps relation IDs to their descriptions.
+        """
+        entity2id_file_name = 'entity2id_no_sort.txt' if self.no_sort else 'entity2id_on_sort.txt'
+        relation2id_file_name = 'relation2id_no_sort.txt' if self.no_sort else 'relation2id_on_sort.txt'
+        entity2id_file_name = os.path.join(self.path, entity2id_file_name)
+        relation2id_file_name = os.path.join(self.path, relation2id_file_name)
+
+        ent2id = {line[0]: int(line[1]) for line in [line.strip().split('\t') for line in open(
+            entity2id_file_name, 'r', encoding='utf-8').readlines()[1:]]}
+        rel2id = {line[0]: int(line[1]) for line in [line.strip().split('\t') for line in open(
+            relation2id_file_name, 'r', encoding='utf-8').readlines()[1:]]}
+
+        ent_id2text = {ent2id[line[0]]: line[1] for line in [line.strip().split('\t') for line in open(
+            os.path.join(self.path, 'ent2text.txt'), 'r', encoding='utf-8').readlines()] if line[0] in ent2id}
+        rel_id2text = {rel2id[line[0]]: line[1] for line in [line.strip().split('\t') for line in open(
+            os.path.join(self.path, 'rel2text.txt'), 'r', encoding='utf-8').readlines()] if line[0] in rel2id}
+
+        if os.path.exists(os.path.join(self.path, 'ent2name.txt')):
+            ent2name = {line[0]: line[1] for line in [line.strip().split('\t') for line in open(
+                os.path.join(self.path, 'ent2name.txt'), 'r', encoding='utf-8').readlines()] if line[0] in ent2id}
+            
+            for k, v in ent2id.items():
+                if v not in ent_id2text:
+                    ent_id2text[v] = ent2name[k]
+
+        return ent_id2text, rel_id2text
+    
+    def generateN2N(self) -> None:
         if not os.path.exists(os.path.join(self.path, 'constraint.txt')):
             generateN2N(self.train, self.valid, self.test, self.path)
     
@@ -72,31 +116,107 @@ class Data(DataSet):
         
 class FB15k(Data):
     def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        """
+        Initializes the FB15k dataset with optional path and sorting parameters.
+
+        Args:
+            path (str): The path to the dataset directory. Defaults to 'data/'.
+            no_sort (bool): Whether to sort the dataset. Defaults to True.
+
+        Returns:
+            None
+        """
         path = 'data/' if path is None else path
         url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/FB15k.zip'
         super(FB15k, self).__init__()
         super(FB15k, self).load(*load_data(url, path, no_sort=no_sort))
+        super(FB15k, self).resetPosAndNegValid(False)
+        super(FB15k, self).resetPosAndNegTest(False)
+        super(FB15k, self).generateN2N()
 
 class FB15k237(Data):
     def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        """
+        Initializes an instance of the FB15k237 class.
+
+        Args:
+            path (str, optional): The path to the data directory. Defaults to 'data/'.
+            no_sort (bool, optional): If True, the loaded data is not sorted. Defaults to True.
+
+        Returns:
+            None
+        """
         path = 'data/' if path is None else path
         url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/FB15k-237.zip'
         super(FB15k237, self).__init__()
         super(FB15k237, self).load(*load_data(url, path, no_sort=no_sort))
+        super(FB15k237, self).resetPosAndNegValid(False)
+        super(FB15k237, self).resetPosAndNegTest(False)
+        super(FB15k237, self).generateN2N()
 
 class WN18(Data):
     def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        """
+        Initializes the WN18 dataset object which inherits from the base dataset class.
+        :param path: A string representing the path to the dataset files. If `None`, defaults to 'data/'.
+        :param no_sort: A boolean indicating whether to sort the data or not. Defaults to `True`.
+        :return: None
+        """
         path = 'data/' if path is None else path
         url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/WN18.zip'
         super(WN18, self).__init__()
         super(WN18, self).load(*load_data(url, path, no_sort=no_sort))
+        super(WN18, self).resetPosAndNegValid(False)
+        super(WN18, self).resetPosAndNegTest(False)
+        super(WN18, self).generateN2N()
 
 class WN18RR(Data):
     def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        """
+        Initializes a new instance of the WN18RR class.
+
+        :param path: The path to the data directory. If None, defaults to 'data/'.
+        :type path: str
+        :param no_sort: Whether to sort the data.
+        :type no_sort: bool
+        :return: None
+        :rtype: None
+        """
         path = 'data/' if path is None else path
         url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/WN18RR.zip'
         super(WN18RR, self).__init__()
         super(WN18RR, self).load(*load_data(url, path, no_sort=no_sort))
+        super(WN18RR, self).resetPosAndNegValid(False)
+        super(WN18RR, self).resetPosAndNegTest(False)
+        super(WN18RR, self).generateN2N()
+
+class YAGO3(Data):
+    def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        path = 'data/' if path is None else path
+        url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/YAGO3-10.zip'
+        super(YAGO3, self).__init__()
+        super(YAGO3, self).load(*load_data(url, path, no_sort=no_sort))
+        super(YAGO3, self).resetPosAndNegValid(False)
+        super(YAGO3, self).resetPosAndNegTest(False)
+        super(YAGO3, self).generateN2N()
+
+class FB13(Data):
+    def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        path = 'data/' if path is None else path
+        url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/FB13.zip'
+        super(FB13, self).__init__()
+        super(FB13, self).load(*load_data(url, path, no_sort=no_sort))
+        super(FB13, self).resetPosAndNegValid(True)
+        super(FB13, self).resetPosAndNegTest(True)
+
+class WN11(Data):
+    def __init__(self, path: str=None, no_sort: bool=True) -> None:
+        path = 'data/' if path is None else path
+        url='https://raw.githubusercontent.com/pp413/Knowledge_embedding_benchmark_datasets/main/WN11.zip'
+        super(WN11, self).__init__()
+        super(WN11, self).load(*load_data(url, path, no_sort=no_sort))
+        super(WN11, self).resetPosAndNegValid(True)
+        super(WN11, self).resetPosAndNegTest(True)
 
 class DataIter(Sample):
     
@@ -160,41 +280,87 @@ class Predict:
             self.__predict_valid = calculate_ranks_on_valid_via_pair
     
     def predict_test(self, function, batch_size: int=256):
+        '''
+        Evaluation for the link prediction.
+        Params:
+            function: the prediction function.
+            batch_size: the batch size.
+        
+        return:
+            (
+                table: the table of results.
+                results: mr, mrr, hits@1, hits@3, hits@10.
+            ) 
+        '''
         results = self.__predict_test(function, self.data, batch_size)
         return get_result_table(*results, data_name=self.data_name, flags='Test')
     
     def predict_valid(self, function, batch_size: int=256):
+        '''
+        Evaluation for the link prediction.
+        Params:
+            function: the prediction function.
+            batch_size: the batch size.
+        
+        return:
+            (
+                table: the table of results.
+                results: mr, mrr, hits@1, hits@3, hits@10.
+            ) 
+        '''
         results = self.__predict_valid(function, self.data, batch_size)
         return get_result_table(*results, data_name=self.data_name, flags='Valid')
     
-    def predict_N2N(self, function, batch_size: int=256, show: bool=False):
+    def predict_N2N(self, function, batch_size: int=256):
+        '''
+        The N2N link predicting results.
+        Params:
+            function: the prediction function.
+            batch_size: the batch size.
+        return:
+            the table of results of N2N.
+        '''
         
         results = {'1to1': [], '1toN': [], 'Nto1': [], 'NtoN': []}
         data = self.data
         
+        test = self.data.test
+        
         # 1 to 1
         self.data.test = data.one2one
-        print('1 to 1')
+        # print('1 to 1')
         results['1to1'] += [i for i in self.__predict_test(function, self.data, batch_size)]
         
         # 1 to n
         self.data.test = data.one2multi
-        print('1 to n')
+        # print('1 to n')
         results['1toN'] += [i for i in self.__predict_test(function, self.data, batch_size)]
         
         # n to 1
         self.data.test = data.multi2one
-        print('n to 1')
+        # print('n to 1')
         results['Nto1'] += [i for i in self.__predict_test(function, self.data, batch_size)]
         
         # n to n
         self.data.test = data.multi2multi
-        print('n to n')
+        # print('n to n')
         results['NtoN'] += [i for i in self.__predict_test(function, self.data, batch_size)]
+        
+        self.data.test = test
         
         return log_N2N(results, data_name=self.data_name)
 
     def calculate_classification_accuracy(self, function, batch_size=1000, threshold=None):
+        '''
+        Calculate the classification accuracy.
+        Params:
+            function: the prediction function.
+            batch_size: batch size.
+            threshold: the threshold.
+        return:
+            (accuracy, threshold)
+        '''
+        
 
         def _tmp_element_triple_function(x, y):
             return function(x)

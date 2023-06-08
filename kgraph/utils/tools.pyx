@@ -45,9 +45,8 @@ def load_triple_original_file(path_file, sep='\t'):
     with open(path_file, 'r') as f:
         for line in f.readlines():
             line = line.strip().split(sep)
-            data.append(line)
+            data.append(line[:3])
     return data
-
 
 def write_triple_from_original_data(original_data, path_file, str2id, sep='\t'):
 
@@ -216,10 +215,10 @@ def generateN2N(
             f11.write(content)
             # fall.write("0"+"\t"+content)
         if (rig_n >= 1.5 and lef_n < 1.5):
-            fn1.write(content)
+            f1n.write(content)
             # fall.write("1"+"\t"+content)
         if (rig_n < 1.5 and lef_n >= 1.5):
-            f1n.write(content)
+            fn1.write(content)
             # fall.write("2"+"\t"+content)
         if (rig_n >= 1.5 and lef_n >= 1.5):
             fnn.write(content)

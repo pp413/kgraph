@@ -399,7 +399,7 @@ cdef void generate_per_triple(DataStruct *data_ptr, int num_ent, int num_rel, in
         else:
             if normal_or_cross == 1:
                 mode = 0 - mode
-            if mode == -1:
+            if mode == 1:
                 corrupts[i, 0] = corrupt_head_c(data_ptr, tId, t, r, num_ent, 0)
                 labels[i] = 1
             else:
@@ -504,6 +504,18 @@ cdef class DataSet:
     cdef DataStruct * getAllTriplesPtr(self):
         return &(self.all_triples_ptr)
     
+    cdef DataStruct * getPosValidDataPtr(self):
+        return &(self.valid_pos_data_ptr)
+    
+    cdef DataStruct * getNegValidDataPtr(self):
+        return &(self.valid_neg_data_ptr)
+    
+    cdef DataStruct * getPosTestDataPtr(self):
+        return &(self.test_pos_data_ptr)
+    
+    cdef DataStruct * getNegTestDataPtr(self):
+        return &(self.test_neg_data_ptr)
+    
     def __init__(self, num_ent: int=0, num_rel: int=0):
         self.tmp_memory_pool = MemoryPool()
         setRandMemory()
@@ -519,11 +531,17 @@ cdef class DataSet:
         self.mode = 0
         self.normal_or_cross = 0
         self.bern_flag = 0
+        self.triple_generate_negative_for_classification = 0
 
         initializeData(&(self.train_data_ptr))
         initializeData(&(self.valid_data_ptr))
         initializeData(&(self.test_data_ptr))
         initializeData(&(self.all_triples_ptr))
+
+        initializeData(&(self.valid_pos_data_ptr))
+        initializeData(&(self.valid_neg_data_ptr))
+        initializeData(&(self.test_pos_data_ptr))
+        initializeData(&(self.test_neg_data_ptr))
 
     # def load(self, const unsigned char[:] root_path, int no_sort):
     def load(self, root_path: bytes, no_sort: int):
@@ -551,21 +569,71 @@ cdef class DataSet:
         putTestInCache_c(&(self.test_data_ptr), test_data_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
         putAllInCache_c(&(self.all_triples_ptr), train_data_array, valid_data_array, test_data_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
 
+        self.__calculate_train_data_size()
+
     def getTrain(self):
+        """
+        return the array of train data.
+        """
         # global train_data
         return getDataFromCache_c(&(self.train_data_ptr))
     
     def getValid(self):
+        """
+        return the array of valid data.
+        """
         # global valid_data
         return getDataFromCache_c(&(self.valid_data_ptr))
     
     def getTest(self):
+        """
+        return the array of test data.
+        """
         # global test_data
         return getDataFromCache_c(&(self.test_data_ptr))
     
     def getAll(self):
+        """
+        return the array of all data.
+        """
         # global all_triples
         return getDataFromCache_c(&(self.all_triples_ptr))
+    
+    def resetPosAndNegTest(self, flag=False):
+        test_array = self.getTest()
+
+        if flag:
+            idx = range(len(test_array) // 2)
+            pos_idx = [2 * x for x in idx]
+            neg_idx = [2 * x + 1 for x in idx]
+            pos_test_array = test_array[pos_idx, :]
+            neg_test_array = test_array[neg_idx, :]
+            putTestInCache_c(&(self.test_pos_data_ptr), pos_test_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putTestInCache_c(&(self.test_neg_data_ptr), neg_test_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putTestInCache_c(&(self.test_data_ptr), pos_test_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            self.triple_generate_negative_for_classification = 1
+        else:
+            putTestInCache_c(&(self.test_pos_data_ptr), test_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putTestInCache_c(&(self.test_neg_data_ptr), test_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            self.triple_generate_negative_for_classification = 0
+    
+    def resetPosAndNegValid(self, flag=False):
+        valid_array = self.getValid()
+
+        if flag:
+            idx = range(len(valid_array) // 2)
+            pos_idx = [2 * x for x in idx]
+            neg_idx = [2 * x + 1 for x in idx]
+            pos_valid_array = valid_array[pos_idx, :]
+            neg_valid_array = valid_array[neg_idx, :]
+            putValidInCache_c(&(self.valid_pos_data_ptr), pos_valid_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putValidInCache_c(&(self.valid_neg_data_ptr), neg_valid_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putValidInCache_c(&(self.valid_data_ptr), pos_valid_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            self.triple_generate_negative_for_classification = 1
+        else:
+            putValidInCache_c(&(self.valid_pos_data_ptr), valid_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            putValidInCache_c(&(self.valid_neg_data_ptr), valid_array, self.num_ent, self.num_rel, self.tmp_memory_pool)
+            self.triple_generate_negative_for_classification = 0
     
     def initConstraint(self):
         global type_constrain
@@ -652,6 +720,15 @@ cdef class DataSet:
             self._smooth_lambda = value
             self.element_type = 1
             self.__calculate_train_data_size()
+    
+    property smooth:
+        def __get__(self):
+            return self._smooth_lambda
+        
+        def __set__(self, value: float):
+            self._smooth_lambda = value
+            self.element_type = 1
+            self.__calculate_train_data_size()
 
     def get_item_pair(self, index: int):
         cdef np.ndarray[int, ndim=1] index_per_pair = np.zeros(2, dtype=np.int32)
@@ -726,10 +803,29 @@ cdef class DataSet:
             self.__calculate_train_data_size()
     
     def get_item_triple(self, index: int):
+        """
+        TODO: Generate the triple samples for training.
+        return triples, labels
+
+        eg.:
+        >>>data = FB15k()
+        >>>samples, labels = data.get_item_triple(1)
+
+        samples:[[[12, 1, 4]]] labels:[[0]]
+
+        eg.:
+        >>>data = FB15k()
+        >>>data.num_neg = 4
+        >>>samples, labels = data.get_item_triple(1)
+
+        samples:[[[12, 1, 5], [12, 1, 138], [0, 1, 5], [12, 1, 7], [12, 1, 4]]]  labels:[[1, 1, -1, 1, 0]]
+
+        In labels, 1 means that replace the head entity, and -1 means that replace the tail entity, and 0 defines the original triple.
+        """
 
         cdef np.ndarray[int, ndim=1] index_per_triple = np.zeros(3, dtype=np.int32)
         cdef np.ndarray[int, ndim=2] corrupts = np.zeros((self.num_neg, 3), dtype=np.int32)
-        cdef np.ndarray[int, ndim=1] index_per_label = np.zeros(self.num_neg, dtype=np.int32)
+        cdef np.ndarray[int, ndim=1] index_per_label = np.zeros(self.num_neg + 1, dtype=np.int32)
 
         index_per_triple[0] = self.train_data_ptr.data[index].head
         index_per_triple[1] = self.train_data_ptr.data[index].rel
@@ -737,7 +833,9 @@ cdef class DataSet:
 
         generate_per_triple(&(self.train_data_ptr), self.num_ent, self.num_rel, corrupts, index_per_label, index, self.mode, self.normal_or_cross, self.bern_flag)
 
-        return index_per_triple, corrupts, index_per_label
+        # return index_per_triple, corrupts, index_per_label
+        index_triples = np.concatenate([corrupts, index_per_triple.reshape((-1, 3))], axis=0)
+        return index_triples, index_per_label
     
     def __getitem__(self, index: int):
         index = index % self.train_data_size

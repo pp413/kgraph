@@ -48,7 +48,13 @@ cdef class DataSet:
         DataStruct test_data_ptr
         DataStruct all_triples_ptr
 
-        int train_data_size
+        DataStruct valid_pos_data_ptr
+        DataStruct valid_neg_data_ptr
+
+        DataStruct test_pos_data_ptr
+        DataStruct test_neg_data_ptr
+
+        int train_data_size, triple_generate_negative_for_classification
         int bern_flag, mode, normal_or_cross, num_neg
         float _smooth_lambda
         MemoryPool tmp_memory_pool
@@ -65,3 +71,11 @@ cdef class DataSet:
     cdef DataStruct * getTestDataPtr(self)
     
     cdef DataStruct * getAllTriplesPtr(self)
+
+    cdef DataStruct * getPosValidDataPtr(self)
+
+    cdef DataStruct * getNegValidDataPtr(self)
+
+    cdef DataStruct * getPosTestDataPtr(self)
+
+    cdef DataStruct * getNegTestDataPtr(self)
